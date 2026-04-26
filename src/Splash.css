@@ -1,0 +1,123 @@
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.splash.splash-in { opacity: 1; }
+
+.splash.splash-out {
+  opacity: 0;
+  transform: scale(1.04);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #0a0a14 0%, #0d0d1f 50%, #0a0f0a 100%);
+}
+
+.splash-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.splash-content.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.splash-icon {
+  width: 80px;
+  height: 80px;
+  opacity: 0;
+  transform: scale(0.6) rotate(-10deg);
+  transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.splash-icon.icon-in {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.splash-icon svg {
+  width: 80px;
+  height: 80px;
+  filter: drop-shadow(0 8px 24px rgba(99,102,241,0.5));
+}
+
+.splash-text {
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s;
+}
+
+.splash-text.text-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.splash-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  background: linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.7) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.splash-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 0.5px;
+}
+
+.splash-loader {
+  opacity: 0;
+  transition: opacity 0.4s ease 0.2s;
+  width: 160px;
+}
+
+.splash-loader.loader-in { opacity: 1; }
+
+.splash-bar {
+  height: 2px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.splash-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #6366f1, #10b981);
+  border-radius: 2px;
+  transition: width 0s;
+}
+
+.splash-bar-fill.fill-animate {
+  width: 100%;
+  transition: width 300s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
