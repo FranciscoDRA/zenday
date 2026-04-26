@@ -19,6 +19,12 @@
   "build": {
     "appId": "com.zenday.app",
     "productName": "ZenDay",
+    "publish": {
+      "provider": "github",
+      "owner": "FranciscoDRA",
+      "repo": "zenday",
+      "private": true
+    },
     "directories": {
       "output": "dist_electron"
     },
@@ -35,7 +41,10 @@
       }
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
       "icon": "public/icon.icns"
     },
@@ -43,7 +52,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "${productName}-Setup-${version}.${ext}",
@@ -57,5 +68,26 @@
       "createStartMenuShortcut": true,
       "shortcutName": "ZenDay"
     }
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "electron-updater": "^6.8.3",
+    "firebase": "^12.12.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "recharts": "^2.15.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.1",
+    "@vitejs/plugin-react": "^4.6.0",
+    "concurrently": "^9.1.2",
+    "electron": "^36.7.0",
+    "electron-builder": "^26.0.12",
+    "vite": "^6.0.4",
+    "wait-on": "^8.0.3"
   }
 }

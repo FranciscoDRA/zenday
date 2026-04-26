@@ -45,6 +45,11 @@ import { ReportsScreen } from './components/screens/ReportsScreen'
 import { LicenseScreen } from './components/screens/licenseScreen.jsx'
 import { PersonalAgendaScreen } from './components/screens/PersonalAgendaScreen'
 
+// Auth
+import { LoginScreen } from './components/screens/LoginScreen'
+import { auth } from './firebase'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+
 // Reducer
 import { appointmentsReducer } from './reducers/appointmentsReducer'
 
@@ -195,7 +200,7 @@ function Splash({ onFinish }) {
 }
 
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────────
-function AppContent() {
+function AppContent({ user, onLogout }) {
   const toast = useToast()
   const { addNotification } = useNotifications()
   const { addReminder } = useReminders()
@@ -734,6 +739,8 @@ function AppContent() {
     setAppointments: setAppointmentsDirect,
     setAppointmentsRaw: setAppointmentsDirect,
     onIntegrationsChange: reconnect,
+    user,
+    onLogout,
   }
 
   // SCREENS
@@ -907,14 +914,35 @@ function AppContent() {
   )
 }
 
-// ─── EXPORT DEFAULT ───────────────────────────────────────────────────
+// ─── EXPORT DEFAULT CON AUTENTICACIÓN ─────────────────────────────────
 export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u)
+      setAuthChecked(true)
+    })
+    return () => unsub()
+  }, [])
+
+  if (!authChecked) return null
+
+  if (!user) {
+    return (
+      <ToastProvider>
+        <LoginScreen onLogin={setUser} />
+      </ToastProvider>
+    )
+  }
+
   return (
     <ToastProvider>
       <NotificationProvider>
         <ReminderProvider>
           <ConfirmProvider>
-            <AppContent />
+            <AppContent user={user} onLogout={() => signOut(auth)} />
           </ConfirmProvider>
         </ReminderProvider>
       </NotificationProvider>
