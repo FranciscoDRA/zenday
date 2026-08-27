@@ -4,12 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- CSP permisivo para desarrollo con Firebase -->
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *;" />
-    
-    <title>ZenDay Consultorio</title>
-    
+
+    <!--
+      La Content-Security-Policy de producción la inyecta el plugin `productionCsp`
+      de vite.config.js al hacer `npm run build`.
+
+      Antes acá había:
+        default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src *;
+      que es equivalente a no tener CSP: permitía cargar y ejecutar script desde
+      cualquier dominio. En desarrollo la CSP la pone el server de Vite
+      (vite.config.js → server.headers), que sí necesita 'unsafe-inline' para el HMR.
+    -->
+
+    <title>ZenDay</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">

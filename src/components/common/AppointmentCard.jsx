@@ -3,6 +3,7 @@ import { formatTime, formatDateTime, formatCurrency } from '../../utils/helpers'
 import { RECURRENCE_TYPES, STATUSES, ORDER_STATUSES } from '../../utils/constants'
 import { StatusBadge } from './StatusBadge'
 import { PaymentBadge } from './PaymentBadge'
+import { useConfirm } from '../../contexts/ConfirmContext'
 
 // Constantes fuera del componente para evitar hardcodeo
 const VALID_NAVIGATION_ROUTES = ['detail', 'reschedule', 'edit']
@@ -51,6 +52,8 @@ export function AppointmentCard({
   // TODOS LOS HOOKS ANTES DE CUALQUIER RETURN
   // ============================================
   
+  const { confirm } = useConfirm()
+
   const [pendingStatus, setPendingStatus] = useState(null)
   const previousStatusRef = useRef(null)
   const timeoutRef = useRef(null)
@@ -82,7 +85,7 @@ export function AppointmentCard({
   }, [appointment.status, pendingStatus])
 
   // Determinar modos y statuses
-  const isOrderMode = userMode === 'merchant' || userMode === 'entrepreneur'
+  const isOrderMode = userMode === 'entrepreneur'
   const isProfessionalMode = userMode === 'professional'
   const isPersonalMode = userMode === 'personal'
   const isEntrepreneurMode = userMode === 'entrepreneur'
@@ -106,8 +109,15 @@ export function AppointmentCard({
     const statusLabel = getStatusLabel(newStatus)
     
     if (isCritical) {
-      const confirmMessage = `¿Cambiar estado a "${statusLabel}"? Esto modificará el stock y no podrá deshacerse fácilmente.`
-      if (!window.confirm(confirmMessage)) {
+      // Era window.confirm: en Electron eso abre el cartel gris del sistema,
+      // con la ruta del archivo arriba. Al lado del resto de la app parece
+      // que algo se rompio. useConfirm usa el modal propio, que ademas se
+      // cierra con Escape y confirma con Enter.
+      const ok = await confirm(
+        `¿Cambiar estado a "${statusLabel}"?\n\nEsto modifica el stock y no se puede deshacer facilmente.`,
+        'Cambiar estado'
+      )
+      if (!ok) {
         if (selectRef.current) {
           selectRef.current.value = previousStatus
         }

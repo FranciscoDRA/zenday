@@ -3,7 +3,7 @@ import { BackButton } from '../common/BackButton'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
-import { formatCurrency } from '../../utils/helpers'
+import { formatCurrency, todayKey } from '../../utils/helpers'
 import {
   importProductsFromExcel,
   downloadProductTemplate,
@@ -113,7 +113,7 @@ async function publishToFirebase(product, integration) {
   }
 }
 
-export function ProductsScreen({ nav, products, setProducts, onIntegrationsChange }) {
+export function ProductsScreen({ nav, products, setProducts, appointments = [], onIntegrationsChange }) {
   const focusRef = useScreenFocus()
   const toast = useToast()
   const { confirm } = useConfirm()
@@ -143,6 +143,51 @@ export function ProductsScreen({ nav, products, setProducts, onIntegrationsChang
     outOfStock: products.filter(p => (p.stock || 0) === 0).length,
     totalValue: products.reduce((sum, p) => sum + (p.price || 0) * (p.stock || 0), 0),
   }), [products])
+
+  // ========== FUNCIÓN PARA VERIFICAR PEDIDOS ASOCIADOS A UN PRODUCTO ==========
+  const verificarPedidosAsociados = useCallback((productId) => {
+    const productIdStr = String(productId)
+    
+    // 1. Verificar en appointments (pedidos de agenda)
+    // FIX: contaba TODOS los pedidos, incluidos los entregados y los cancelados,
+    // así que un artículo que alguna vez vendiste quedaba bloqueado para siempre.
+    // El mensaje decía "completá los pedidos primero" y completarlos no cambiaba
+    // nada. La rama de emprendedor (más abajo) ya filtraba por estado.
+    const ESTADOS_ACTIVOS = new Set(['scheduled', 'confirmed', 'pending'])
+    const pedidosEnAppointments = (appointments || []).filter(a => {
+      if (!a.productId) return false
+      return String(a.productId) === productIdStr && ESTADOS_ACTIVOS.has(a.status)
+    })
+    
+    // 2. Verificar en pedidos del Panel de Producción
+    let pedidosEnEmprendedor = []
+    try {
+      const saved = localStorage.getItem('zenday-emprendedor-pedidos')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          pedidosEnEmprendedor = parsed.filter(p => {
+            if (!p.articuloId) return false
+            return String(p.articuloId) === productIdStr && p.estado !== 'ENTREGADO'
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[ProductsScreen] Error loading emprendedor pedidos:', e)
+    }
+    
+    const totalPedidos = pedidosEnAppointments.length + pedidosEnEmprendedor.length
+    
+    return {
+      total: totalPedidos,
+      enAppointments: pedidosEnAppointments.length,
+      enEmprendedor: pedidosEnEmprendedor.length,
+      detalles: {
+        appointments: pedidosEnAppointments.map(a => ({ id: a.id, patientName: a.patientName, status: a.status })),
+        emprendedor: pedidosEnEmprendedor.map(p => ({ id: p.id, cliente: p.cliente, estado: p.estado }))
+      }
+    }
+  }, [appointments])
 
   const checkDuplicates = useCallback((fd, excludeId = null) => {
     const nameLower = fd.name.toLowerCase()
@@ -225,23 +270,69 @@ export function ProductsScreen({ nav, products, setProducts, onIntegrationsChang
     await handlePublishToWeb(savedProduct)
   }, [formData, editingProduct, validateForm, buildProductData, setProducts, handlePublishToWeb])
 
+  // ========== DELETE PRODUCT CON VALIDACIÓN DE PEDIDOS ASOCIADOS ==========
   const handleDelete = useCallback(async (product) => {
-    if (await confirm(`¿Eliminar "${product.name}"?`)) {
-      setProducts(prev => prev.filter(p => p.id !== product.id))
-      toast.addToast('Artículo eliminado', 'success')
+    // Verificar si el producto tiene pedidos asociados
+    const pedidosAsociados = verificarPedidosAsociados(product.id)
+    
+    console.log('[ProductsScreen] Verificando producto:', product.name)
+    console.log('[ProductsScreen] Pedidos en appointments:', pedidosAsociados.enAppointments)
+    console.log('[ProductsScreen] Pedidos en emprendedor:', pedidosAsociados.enEmprendedor)
+    
+    if (pedidosAsociados.total > 0) {
+      let mensaje = `❌ No se puede eliminar "${product.name}"\n\n`
+      mensaje += `Este producto tiene ${pedidosAsociados.total} pedido(s) asociado(s):\n`
+      if (pedidosAsociados.enAppointments > 0) {
+        mensaje += `📋 ${pedidosAsociados.enAppointments} en la agenda\n`
+      }
+      if (pedidosAsociados.enEmprendedor > 0) {
+        mensaje += `📦 ${pedidosAsociados.enEmprendedor} en producción\n`
+      }
+      mensaje += `\n⚠️ Eliminá o completá los pedidos primero.`
+      
+      toast.addToast(mensaje, 'error')
+      return
     }
-  }, [confirm, setProducts, toast])
+    
+    const ok = await confirm(`¿Eliminar "${product.name}"?\n\nEsta acción no se puede deshacer.`)
+    if (!ok) return
+    
+    setProducts(prev => prev.filter(p => p.id !== product.id))
+    toast.addToast('Artículo eliminado', 'success')
+  }, [confirm, setProducts, toast, verificarPedidosAsociados])
 
   const handleDeleteAll = useCallback(async () => {
+    // Verificar productos con pedidos asociados antes de eliminar todos
+    const productosConPedidos = []
+    for (const product of products) {
+      const pedidos = verificarPedidosAsociados(product.id)
+      if (pedidos.total > 0) {
+        productosConPedidos.push({ name: product.name, pedidos: pedidos.total })
+      }
+    }
+    
+    if (productosConPedidos.length > 0) {
+      let mensaje = `❌ No se pueden eliminar todos los artículos porque hay productos con pedidos:\n\n`
+      productosConPedidos.slice(0, 5).forEach(p => {
+        mensaje += `• ${p.name}: ${p.pedidos} pedido(s)\n`
+      })
+      if (productosConPedidos.length > 5) {
+        mensaje += `\n...y ${productosConPedidos.length - 5} más`
+      }
+      toast.addToast(mensaje, 'error')
+      return
+    }
+    
     const count = products.length
     if (!await confirm(`⚠️ ¿ELIMINAR TODOS LOS ARTÍCULOS?\n\nSe eliminarán ${count} artículos permanentemente.`)) return
-    setProducts([]); toast.addToast(`🗑️ Se eliminaron ${count} artículos`, 'success')
-  }, [confirm, products.length, setProducts, toast])
+    setProducts([])
+    toast.addToast(`🗑️ Se eliminaron ${count} artículos`, 'success')
+  }, [confirm, products, setProducts, toast, verificarPedidosAsociados])
 
   const handleBackup = useCallback(() => {
     if (products.length === 0) { toast.addToast('No hay artículos para respaldar', 'error'); return }
     const blob = new Blob([JSON.stringify({ version: '1.0', date: new Date().toISOString(), products }, null, 2)], { type: 'application/json' })
-    downloadBlob(blob, `zenday_productos_backup_${new Date().toISOString().split('T')[0]}.json`)
+    downloadBlob(blob, `zenday_productos_backup_${todayKey()}.json`)
     toast.addToast(`💾 Backup creado con ${products.length} artículos`, 'success')
   }, [products, toast])
 
@@ -472,7 +563,7 @@ export function ProductsScreen({ nav, products, setProducts, onIntegrationsChang
                   fontFamily: 'inherit', fontSize: 13,
                   borderBottom: activeTab === tab.id ? '2px solid #6366f1' : '2px solid transparent',
                   fontWeight: activeTab === tab.id ? 700 : 400,
-                  color: activeTab === tab.id ? '#6366f1' : 'var(--text-secondary)',
+                  color: activeTab === tab.id ? 'var(--accent-blue)' : 'var(--text-secondary)',
                 }}>
                   {tab.label}
                 </button>
@@ -637,7 +728,7 @@ export function ProductsScreen({ nav, products, setProducts, onIntegrationsChang
                     cursor: publishing ? 'not-allowed' : 'pointer', fontSize: 12,
                     fontFamily: 'inherit', fontWeight: 600,
                     background: p.publishedToWeb ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.10)',
-                    color: p.publishedToWeb ? '#10b981' : '#6366f1',
+                    color: p.publishedToWeb ? 'var(--accent-green)' : 'var(--accent-blue)',
                   }}>
                   {publishing ? '⏳ Publicando…' : p.publishedToWeb ? '🌐 Actualizar en web' : '🌐 Publicar en web'}
                 </button>

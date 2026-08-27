@@ -12,6 +12,21 @@ export const STATUSES = {
   'no-show': { label: 'No asistió', color: '#95a5a6', icon: '🚫' },
 }
 
+/**
+ * Qué cuenta como "todavía en curso" y qué como "ya terminado".
+ *
+ * Había TRES definiciones distintas repartidas por el proyecto: una en App.jsx,
+ * otra en ProductsScreen y otra en PatientsScreen — y no coincidían. La de
+ * PatientsScreen ni siquiera filtraba: contaba pedidos completados y
+ * cancelados de hace años, así que ningún cliente con historial se podía
+ * borrar, y el mensaje pedía "completá los pedidos primero" cuando ya estaban
+ * completos.
+ *
+ * Ojo con el guion: el estado es 'in-progress', no 'in_progress'.
+ */
+export const ACTIVE_STATUSES    = new Set(['scheduled', 'confirmed', 'pending', 'in-progress'])
+export const COMPLETED_STATUSES = new Set(['completed', 'delivered', 'picked'])
+
 export const ORDER_STATUSES = {
   pending: { label: 'Pendiente', color: '#f39c12', icon: '⏳' },
   delivered: { label: 'Entregado', color: '#27ae60', icon: '✅' },
@@ -23,7 +38,15 @@ export const USER_MODES = {
   personal: { label: 'Personal', icon: '👤', description: 'Agenda personal' },
   professional: { label: 'Profesional', icon: '🏥', description: 'Consultorio médico' },
   entrepreneur: { label: 'Emprendedor', icon: '🛒', description: 'Gestión de productos y pedidos' },
-  merchant: { label: 'Comerciante', icon: '🏪', description: 'Pedidos con estados de entrega' },
+  // 'merchant' (Comerciante) se eliminó. Era un modo fantasma: aparecía en el
+  // desplegable de Ajustes, pero nada lo asignaba y ningún código hacía algo
+  // distinto con él — los tres lugares que lo miraban lo trataban igual que
+  // a 'entrepreneur'.
+  //
+  // Y elegirlo era peor que inútil: las claves de datos son
+  // `zenday-${modo}-...`, así que la app aparecía VACÍA (otro juego de
+  // claves) y lo que cargaras ahí quedaba invisible desde cualquier otro
+  // modo. Lo mismo en Firestore: businesses/{id}/data/merchant/...
 }
 
 export const RECURRENCE_TYPES = {

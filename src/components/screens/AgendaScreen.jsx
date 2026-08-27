@@ -26,13 +26,13 @@ const openWhatsApp = (phoneNumber, e) => {
 
 const STATUS_COLORS = {
   scheduled:   '#3b82f6',
-  confirmed:   '#10b981',
-  'in-progress': '#f59e0b',
-  completed:   '#22c55e',
-  cancelled:   '#ef4444',
+  confirmed:   'var(--accent-green)',
+  'in-progress': 'var(--accent-amber)',
+  completed:   'var(--accent-green)',
+  cancelled:   'var(--accent-red)',
   'no-show':   '#6b7280',
-  pending:     '#f59e0b',
-  delivered:   '#22c55e',
+  pending:     'var(--accent-amber)',
+  delivered:   'var(--accent-green)',
 }
 
 const STATUS_LABELS = {
@@ -96,7 +96,7 @@ function ClientCard({ apt, nav, onStatusChange, onMarkAsPaid, compact, userMode 
               fontSize: 10, fontWeight: 500, padding: '2px 7px',
               borderRadius: 20,
               background: isPaid ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
-              color:      isPaid ? '#22c55e'              : '#f59e0b',
+              color:      isPaid ? 'var(--accent-green)'              : 'var(--accent-amber)',
               cursor:     (!isPaid && ['completed','delivered','picked'].includes(apt.status)) ? 'pointer' : 'default',
             }}
             onClick={(e) => {
@@ -279,6 +279,8 @@ export function AgendaScreen({
     if (targetHour !== null) newStart.setHours(targetHour, 0, 0)
     else { const o = new Date(apt.startTime); newStart.setHours(o.getHours(), o.getMinutes(), 0) }
     const newEnd = new Date(newStart.getTime() + (apt.duration || 30) * 60000)
+    // FIX: arrastrabas una cita a un horario ocupado, la tarjeta volvía a su
+    // lugar y no aparecía ningún mensaje. Parecía que el drag no había andado.
     updateAppointment(apt.id, { startTime: newStart.toISOString(), endTime: newEnd.toISOString() })
   }, [filteredAppointments, updateAppointment])
 
@@ -435,7 +437,7 @@ export function AgendaScreen({
                 <div style={{ display: 'flex', gap: 3 }}>
                   {apts.length > 0 && <span className="month-day-count">{apts.length}</span>}
                   {pendingPay > 0 && (
-                    <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.2)', color: '#f59e0b', borderRadius: 10, padding: '1px 5px' }}>
+                    <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.2)', color: 'var(--accent-amber)', borderRadius: 10, padding: '1px 5px' }}>
                       💳{pendingPay}
                     </span>
                   )}
@@ -499,9 +501,9 @@ export function AgendaScreen({
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { label: 'Hoy',        value: stats.today,       color: '#3b82f6' },
-          { label: 'Cobros pendientes', value: stats.pendingPay, color: '#f59e0b',
+          { label: 'Cobros pendientes', value: stats.pendingPay, color: 'var(--accent-amber)',
             sub: stats.pendingPay > 0 ? formatCurrency(stats.pendingPayTotal, 'UYU') : null },
-          { label: 'Total activas', value: stats.total,    color: '#10b981' },
+          { label: 'Total activas', value: stats.total,    color: 'var(--accent-green)' },
         ].map(s => (
           <div key={s.label} style={{
             flex: 1, minWidth: 100,
@@ -510,7 +512,7 @@ export function AgendaScreen({
           }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{s.label}</div>
-            {s.sub && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2 }}>{s.sub}</div>}
+            {s.sub && <div style={{ fontSize: 10, color: 'var(--accent-amber)', marginTop: 2 }}>{s.sub}</div>}
           </div>
         ))}
       </div>
@@ -583,7 +585,7 @@ export function AgendaScreen({
           style={{
             padding: '8px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13,
             background: showPaymentOnly ? 'rgba(245,158,11,0.2)' : 'var(--bg-secondary)',
-            color: showPaymentOnly ? '#f59e0b' : 'var(--text-secondary)',
+            color: showPaymentOnly ? 'var(--accent-amber)' : 'var(--text-secondary)',
             fontWeight: showPaymentOnly ? 600 : 400,
           }}
         >
@@ -629,7 +631,7 @@ export function AgendaScreen({
               <span style={{ flex: 1, color: 'var(--text-primary)' }}>{a.serviceName || 'Cita'}</span>
               {/* Resaltar citas completadas sin cobrar */}
               <span style={{ 
-                color: a.paid ? '#22c55e' : '#f59e0b', 
+                color: a.paid ? 'var(--accent-green)' : 'var(--accent-amber)', 
                 fontSize: 11,
                 animation: (!a.paid && a.status === 'completed') ? 'pulse 1.5s infinite' : 'none'
               }}>
@@ -653,8 +655,8 @@ export function AgendaScreen({
 
       {/* LEYENDA */}
       <div className="recurrence-legend">
-        <span className="legend-item"><span style={{ color: '#22c55e' }}>💰</span> Pagado</span>
-        <span className="legend-item"><span style={{ color: '#f59e0b' }}>⏳</span> Pendiente de cobro</span>
+        <span className="legend-item"><span style={{ color: 'var(--accent-green)' }}>💰</span> Pagado</span>
+        <span className="legend-item"><span style={{ color: 'var(--accent-amber)' }}>⏳</span> Pendiente de cobro</span>
         <span className="legend-item"><span style={{ color: '#25D366' }}>💬</span> WhatsApp directo</span>
       </div>
 

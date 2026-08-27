@@ -27,6 +27,7 @@ dist-ssr
 node_modules/
 dist/
 dist_electron/
+dist_electron_*/
 *.exe
 *.asar
 win32-x64-template-*/
@@ -34,3 +35,15 @@ win32-x64-template-*/
 *.zip
 .vercel/
 .DS_Store
+
+# Secretos del sistema de licencias — NUNCA subir esto
+zenday-private.pem
+*.pem
+serviceAccountKey.json
+functions/node_modules/
+.firebase/
+
+# Carpetas de cosas que se sacaron del proyecto. Quedan en el disco por si
+# hay que volver atras, pero no van al repo ni al instalador.
+_codigo-muerto/
+_eliminado-whatsapp/

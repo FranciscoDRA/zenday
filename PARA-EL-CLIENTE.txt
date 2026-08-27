@@ -1,0 +1,37 @@
+Hola! Te paso ZenDay para que lo pruebes.
+
+DESCARGAR E INSTALAR
+--------------------
+1. Baja el archivo del link que te mande (ZenDay-Setup-1.0.9.exe).
+
+2. Doble clic.
+
+3. IMPORTANTE - Windows te va a mostrar una pantalla azul que dice
+   "Windows protegio su PC" y parece que el archivo fuera peligroso.
+   No lo es. Sale porque el instalador todavia no tiene la firma
+   digital de pago, no porque haya algo raro adentro.
+
+   Para seguir:
+       - Hace clic en "Mas informacion"
+       - Despues en "Ejecutar de todas formas"
+
+4. Elegi la carpeta (o dejala como viene) y listo.
+   Te queda el icono de ZenDay en el escritorio.
+
+USARLO
+------
+Abrilo y ya arranca. Tenes 14 dias de prueba con todo habilitado,
+sin ninguna clave ni tarjeta.
+
+QUE ME SIRVE QUE ME CUENTES
+---------------------------
+Mas que "esta lindo", me sirve:
+
+  - Que quisiste hacer y no encontraste como.
+  - Algo que hiciste y no paso lo que esperabas.
+  - Cualquier numero que te parezca que esta mal.
+  - Si algo se ve raro o cortado en tu pantalla.
+
+Si algo se rompe feo, sacale una foto a la pantalla y mandamela.
+
+Gracias por probarlo.

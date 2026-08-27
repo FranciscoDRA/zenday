@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react'
 
 const ToastContext = createContext(null)
 
@@ -15,8 +15,22 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
+  // El objeto del contexto se memoriza a propósito.
+  //
+  // Escrito como `value={{ addToast, removeToast }}` era un objeto NUEVO en
+  // cada render del provider — y el provider re-renderiza cada vez que aparece
+  // un toast y otra vez cuando se va solo a los 3 segundos.
+  //
+  // Eso hacía que `toast` cambiara de identidad todo el tiempo, y App.jsx tiene
+  // `toast` en las dependencias del efecto que suscribe a Firestore: cada toast
+  // desarmaba y rearmaba las cuatro suscripciones, y el snapshot fresco pisaba
+  // el estado local. El caso feo era guardar algo: salía el toast de "guardado",
+  // eso mismo re-suscribía, y llegaba la versión del servidor sin lo recién
+  // guardado. Ambas funciones ya son estables (useCallback con deps vacías).
+  const value = useMemo(() => ({ addToast, removeToast }), [addToast, removeToast])
+
   return (
-    <ToastContext.Provider value={{ addToast, removeToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="toast-container">
         {toasts.map(toast => (

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react'
 import { AppointmentCard } from '../common/AppointmentCard'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
-import { formatCurrency } from '../../utils/helpers'
+import { formatCurrency, parseLocalDate, toLocalDateKey, getRevenueDate } from '../../utils/helpers'
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -19,10 +19,8 @@ const CHART_TITLES    = {
 }
 
 // ─── CORREGIDO: Fecha efectiva para reportes financieros ──────────────────────
-function getRevenueDate(appointment) {
-  // Prioridad: deliveredAt (fecha de entrega) > paymentDate > startTime
-  return appointment.deliveredAt || appointment.paymentDate || appointment.startTime
-}
+// getRevenueDate vive en utils/helpers: las tres pantallas de plata tenian
+// su propia copia y NO coincidian. Ver el comentario alla.
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       {payload.length >= 2 && (
         <p style={{
           marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', fontSize: 13,
-          color: payload[0].value - payload[1].value >= 0 ? '#10b981' : '#ef4444',
+          color: payload[0].value - payload[1].value >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
         }}>
           Balance: {formatCurrency(payload[0].value - payload[1].value, 'UYU')}
         </p>
@@ -129,18 +127,32 @@ function EntrepreneurDashboard({
     return { count: list.length, total: list.reduce((s, a) => s + (a.price || 0), 0) }
   }, [appointments])
 
-  // ── CORREGIDO: Financieros con getRevenueDate ─────────────────────────────────
+  // ─── NUEVO: Total histórico cobrado ────────────────────────────────────────
+  const totalHistoricoIncome = useMemo(() =>
+    appointments.filter(a => PAID_STATUSES.has(a.status) && a.paid === true)
+      .reduce((s, a) => s + (a.price || 0), 0),
+  [appointments])
+
+  const totalHistoricoCount = useMemo(() =>
+    appointments.filter(a => PAID_STATUSES.has(a.status) && a.paid === true).length,
+  [appointments])
+
+  // ─── CORREGIDO: Solo ingresos cobrados (paid === true) ─────────────────────────────────
   const currentMonthIncome = useMemo(() =>
     appointments.filter(a => {
       const revenueDate = getRevenueDate(a)
-      return isInMonth(revenueDate, currentMonth, currentYear) && PAID_STATUSES.has(a.status)
+      return isInMonth(revenueDate, currentMonth, currentYear) && 
+             PAID_STATUSES.has(a.status) && 
+             a.paid === true
     }).reduce((s, a) => s + (a.price || 0), 0),
   [appointments, currentMonth, currentYear])
 
   const prevMonthIncome = useMemo(() =>
     appointments.filter(a => {
       const revenueDate = getRevenueDate(a)
-      return isInMonth(revenueDate, prevMonth, prevYear) && PAID_STATUSES.has(a.status)
+      return isInMonth(revenueDate, prevMonth, prevYear) && 
+             PAID_STATUSES.has(a.status) && 
+             a.paid === true
     }).reduce((s, a) => s + (a.price || 0), 0),
   [appointments, prevMonth, prevYear])
 
@@ -161,13 +173,15 @@ function EntrepreneurDashboard({
   const profitVariation    = pct(currentMonthProfit,   prevMonthProfit)
   const goalProgress       = monthlyGoal > 0 ? (currentMonthIncome / monthlyGoal) * 100 : 0
 
-  // ── CORREGIDO: Top productos del mes con getRevenueDate ────────────────────
+  // ─── CORREGIDO: Top productos del mes solo con cobrados ────────────────────
   const topProducts = useMemo(() => {
     const map = {}
     appointments
       .filter(a => {
         const revenueDate = getRevenueDate(a)
-        return isInMonth(revenueDate, currentMonth, currentYear) && PAID_STATUSES.has(a.status)
+        return isInMonth(revenueDate, currentMonth, currentYear) && 
+               PAID_STATUSES.has(a.status) && 
+               a.paid === true
       })
       .forEach(a => {
         const name = a.productName || 'Sin nombre'
@@ -178,14 +192,16 @@ function EntrepreneurDashboard({
     return Object.values(map).sort((a, b) => b.qty - a.qty).slice(0, 5)
   }, [appointments, currentMonth, currentYear])
 
-  // ── CORREGIDO: Gráficos con getRevenueDate ────────────────────────────────
+  // ─── CORREGIDO: Gráficos solo con cobrados ────────────────────────────────
   const last6MonthsData = useMemo(() =>
     Array.from({ length: 6 }, (_, i) => {
       const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (5 - i))
       const m = d.getMonth(), y = d.getFullYear()
       const income = appointments.filter(a => {
         const revenueDate = getRevenueDate(a)
-        return isInMonth(revenueDate, m, y) && PAID_STATUSES.has(a.status)
+        return isInMonth(revenueDate, m, y) && 
+               PAID_STATUSES.has(a.status) && 
+               a.paid === true
       }).reduce((s, a) => s + (a.price || 0), 0)
       const expense = expenses.filter(e => isInMonth(e.date, m, y)).reduce((s, e) => s + (e.amount || 0), 0)
       return { name: MONTH_NAMES[m], ingresos: income, gastos: expense }
@@ -194,10 +210,15 @@ function EntrepreneurDashboard({
   const last7DaysData = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() - (6 - i))
-      const dateStr = d.toISOString().split('T')[0]
+      // FIX: se compara en hora LOCAL. Antes el bucket se armaba con
+      // toISOString() (UTC) pero la etiqueta con toLocaleDateString() (local),
+      // así que una venta de las 22:00 del martes caía en la barra del miércoles.
+      const dateStr = toLocalDateKey(d)
       const income = appointments.filter(a => {
         const revenueDate = getRevenueDate(a)
-        return revenueDate?.startsWith(dateStr) && PAID_STATUSES.has(a.status)
+        return toLocalDateKey(revenueDate) === dateStr && 
+               PAID_STATUSES.has(a.status) && 
+               a.paid === true
       }).reduce((s, a) => s + (a.price || 0), 0)
       return { name: d.toLocaleDateString('es-ES', { weekday: 'short' }).slice(0, 3), ingresos: income }
     }), [appointments])
@@ -205,10 +226,12 @@ function EntrepreneurDashboard({
   const last30DaysData = useMemo(() =>
     Array.from({ length: 30 }, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() - (29 - i))
-      const dateStr = d.toISOString().split('T')[0]
+      const dateStr = toLocalDateKey(d)
       const income = appointments.filter(a => {
         const revenueDate = getRevenueDate(a)
-        return revenueDate?.startsWith(dateStr) && PAID_STATUSES.has(a.status)
+        return toLocalDateKey(revenueDate) === dateStr && 
+               PAID_STATUSES.has(a.status) && 
+               a.paid === true
       }).reduce((s, a) => s + (a.price || 0), 0)
       return { name: `${d.getDate()}/${d.getMonth() + 1}`, ingresos: income }
     }), [appointments])
@@ -288,6 +311,16 @@ function EntrepreneurDashboard({
             <span className="kpi-subtext">{pendingPayments.count} pedido{pendingPayments.count !== 1 ? 's' : ''} sin cobrar →</span>
           </div>
         </div>
+
+        {/* NUEVA TARJETA: Total histórico cobrado */}
+        <div className="kpi-card" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.2)' }}>
+          <span className="kpi-icon">💎</span>
+          <div className="kpi-content">
+            <span className="kpi-value">{formatCurrency(totalHistoricoIncome, 'UYU')}</span>
+            <span className="kpi-label">Total histórico cobrado</span>
+            <span className="kpi-subtext">{totalHistoricoCount} pedidos cobrados</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Objetivo + Pedidos activos + Stock ───────────────────────────── */}
@@ -314,7 +347,7 @@ function EntrepreneurDashboard({
             <div className="progress-bar-bg">
               <div className="progress-bar-fill" style={{
                 width: `${Math.min(goalProgress, 100)}%`,
-                background: goalProgress >= 100 ? '#10b981' : goalProgress >= 70 ? '#6366f1' : '#f59e0b',
+                background: goalProgress >= 100 ? 'var(--accent-green)' : goalProgress >= 70 ? 'var(--accent-blue)' : 'var(--accent-amber)',
               }} />
             </div>
             <div className="goal-stats">
@@ -332,9 +365,9 @@ function EntrepreneurDashboard({
           <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>📦 Pedidos activos</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
-              { key: 'pendientes', label: '⏳ Pendientes',  count: pedidosByEstado.PENDIENTE,  color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
+              { key: 'pendientes', label: '⏳ Pendientes',  count: pedidosByEstado.PENDIENTE,  color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.10)' },
               { key: 'enproceso',  label: '🔨 En proceso',  count: pedidosByEstado.EN_PROCESO, color: '#3b82f6', bg: 'rgba(59,130,246,0.10)' },
-              { key: 'listos',     label: '✅ Listos',      count: pedidosByEstado.COMPLETADO, color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+              { key: 'listos',     label: '✅ Listos',      count: pedidosByEstado.COMPLETADO, color: 'var(--accent-green)', bg: 'rgba(16,185,129,0.10)' },
             ].map(({ key, label, count, color, bg }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '8px 12px', borderRadius: 10, background: bg }}>
@@ -353,7 +386,7 @@ function EntrepreneurDashboard({
           <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>🏪 Estado del inventario</h4>
           {stockAlerts.out.length === 0 && stockAlerts.low.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-              padding: '16px 0', color: '#10b981' }}>
+              padding: '16px 0', color: 'var(--accent-green)' }}>
               <span style={{ fontSize: 28, marginBottom: 6 }}>✅</span>
               <span style={{ fontSize: 13, fontWeight: 600 }}>Todo el stock en orden</span>
             </div>
@@ -364,7 +397,7 @@ function EntrepreneurDashboard({
                   padding: '6px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', borderLeft: '3px solid #ef4444' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap', maxWidth: '65%' }}>{p.name}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444',
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-red)',
                     background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: 20 }}>AGOTADO</span>
                 </div>
               ))}
@@ -373,7 +406,7 @@ function EntrepreneurDashboard({
                   padding: '6px 10px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', borderLeft: '3px solid #f59e0b' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap', maxWidth: '65%' }}>{p.name}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b',
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-amber)',
                     background: 'rgba(245,158,11,0.15)', padding: '2px 8px', borderRadius: 20 }}>{p.stock} uds</span>
                 </div>
               ))}
@@ -415,15 +448,15 @@ function EntrepreneurDashboard({
                   <YAxis stroke="var(--text-tertiary)" fontSize={11} />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
-                  <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[6,6,0,0]} />
-                  <Bar dataKey="gastos"   name="Gastos"   fill="#ef4444" radius={[6,6,0,0]} />
+                  <Bar dataKey="ingresos" name="Ingresos" fill="var(--accent-green)" radius={[6,6,0,0]} />
+                  <Bar dataKey="gastos"   name="Gastos"   fill="var(--accent-red)" radius={[6,6,0,0]} />
                 </BarChart>
               ) : (
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorIncome2" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="var(--accent-blue)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--accent-blue)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -431,7 +464,7 @@ function EntrepreneurDashboard({
                   <YAxis stroke="var(--text-tertiary)" fontSize={11} />
                   <Tooltip content={<CustomTooltip />} />
                   <Area type="monotone" dataKey="ingresos" name="Ingresos"
-                    stroke="#6366f1" fill="url(#colorIncome2)" strokeWidth={2} />
+                    stroke="var(--accent-blue)" fill="url(#colorIncome2)" strokeWidth={2} />
                 </AreaChart>
               )}
             </ResponsiveContainer>
@@ -454,7 +487,7 @@ function EntrepreneurDashboard({
                 const maxQty = topProducts[0].qty
                 const barW   = (p.qty / maxQty) * 100
                 const medals = ['🥇','🥈','🥉']
-                const barColors = ['#f59e0b','#94a3b8','#f97316','#6366f1','#10b981']
+                const barColors = ['var(--accent-amber)','#94a3b8','#f97316','var(--accent-blue)','var(--accent-green)']
                 return (
                   <div key={`top-${p.name}-${i}`}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -468,9 +501,9 @@ function EntrepreneurDashboard({
                     </div>
                     <div style={{ height: 5, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${barW}%`, borderRadius: 3,
-                        background: barColors[i] || '#6366f1', transition: 'width 0.5s ease' }} />
+                        background: barColors[i] || 'var(--accent-blue)', transition: 'width 0.5s ease' }} />
                     </div>
-                    <div style={{ fontSize: 11, color: '#10b981', textAlign: 'right', marginTop: 1 }}>
+                    <div style={{ fontSize: 11, color: 'var(--accent-green)', textAlign: 'right', marginTop: 1 }}>
                       {formatCurrency(p.revenue, 'UYU')}
                     </div>
                   </div>
@@ -547,7 +580,7 @@ export function DashboardScreen({
   userMode, appointments, patients, expenses, products,
 }) {
   const focusRef       = useScreenFocus()
-  const isEntrepreneur = userMode === 'entrepreneur' || userMode === 'merchant'
+  const isEntrepreneur = userMode === 'entrepreneur'
 
   if (isEntrepreneur) {
     return (
@@ -582,7 +615,7 @@ export function DashboardScreen({
           { key: 'consultas-hoy', cls:'primary', icon:'📊', value: stats.todayTotal,    label:'Consultas hoy' },
           { key: 'completadas',   cls:'success', icon:'✅', value: stats.todayCompleted, label:'Completadas' },
           { key: 'pendientes',    cls:'warning', icon:'⏳', value: stats.todayPending,   label:'Pendientes' },
-          { key: 'pacientes',     cls:'info',    icon:'👥', value: stats.totalPatients,  label:'Pacientes' },
+          { key: 'pacientes',     cls:'info',    icon:'👥', value: stats.totalPatients,  label:'Clientes' },
         ].map(k => (
           <div key={k.key} className={`kpi-card ${k.cls}`}>
             <span className="kpi-icon">{k.icon}</span>
@@ -617,7 +650,7 @@ export function DashboardScreen({
 
       <div className="quick-actions-premium">
         <button className="btn-primary-premium"   onClick={() => nav.navigate('new')}>+ Nueva consulta</button>
-        <button className="btn-secondary-premium" onClick={() => nav.navigate('patients')}>👥 Gestionar pacientes</button>
+        <button className="btn-secondary-premium" onClick={() => nav.navigate('patients')}>👥 Gestionar clientes</button>
         <button className="btn-secondary-premium" onClick={() => nav.navigate('financial')}>💰 Finanzas</button>
       </div>
     </div>

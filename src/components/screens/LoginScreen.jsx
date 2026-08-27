@@ -73,18 +73,18 @@ export function LoginScreen({ onLogin }) {
     <div style={{
       width: '100vw', height: '100vh',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
+      background: 'linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%)',
     }}>
       <div style={{
-        background: 'white', borderRadius: '24px',
+        background: 'var(--card-bg)', borderRadius: '24px',
         padding: '48px 40px', width: '100%', maxWidth: '400px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+        boxShadow: 'var(--shadow-xl)',
       }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
             width: '72px', height: '72px', borderRadius: '20px',
-            background: 'linear-gradient(135deg, #6366f1, #10b981)',
+            background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
           }}>
@@ -93,15 +93,15 @@ export function LoginScreen({ onLogin }) {
               <path d="M30 38L37 45L52 30" stroke="white" strokeWidth="3.5" strokeLinecap="round" />
             </svg>
           </div>
-          <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#1e293b', margin: 0 }}>ZenDay</h1>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>ZenDay</h1>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '14px', marginTop: '4px' }}>
             {mode === 'login' ? 'Iniciá sesión para continuar' : 'Creá tu cuenta'}
           </p>
         </div>
 
         {/* Tabs */}
         <div style={{
-          display: 'flex', background: '#f1f5f9', borderRadius: '12px',
+          display: 'flex', background: 'var(--bg-tertiary)', borderRadius: '12px',
           padding: '4px', marginBottom: '24px',
         }}>
           {[
@@ -113,12 +113,12 @@ export function LoginScreen({ onLogin }) {
               onClick={() => { setMode(tab.key); setError('') }}
               style={{
                 flex: 1, padding: '8px',
-                background: mode === tab.key ? 'white' : 'transparent',
+                background: mode === tab.key ? 'var(--card-bg)' : 'transparent',
                 border: 'none', borderRadius: '10px',
                 fontSize: '13px', fontWeight: 600,
-                color: mode === tab.key ? '#6366f1' : '#64748b',
+                color: mode === tab.key ? 'var(--accent-blue)' : 'var(--text-tertiary)',
                 cursor: 'pointer',
-                boxShadow: mode === tab.key ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: mode === tab.key ? 'var(--shadow-sm)' : 'none',
                 transition: 'all 0.2s',
               }}
             >
@@ -130,7 +130,7 @@ export function LoginScreen({ onLogin }) {
         {/* Form */}
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
               Email
             </label>
             <input
@@ -141,16 +141,17 @@ export function LoginScreen({ onLogin }) {
               autoFocus
               style={{
                 width: '100%', padding: '12px 16px',
-                borderRadius: '12px', border: '1.5px solid #e2e8f0',
+                borderRadius: '12px', border: '1.5px solid var(--border)',
+                background: 'var(--input-bg, transparent)', color: 'var(--text-primary)',
                 fontSize: '15px', outline: 'none', boxSizing: 'border-box',
               }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'}
-              onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+              onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 
           <div style={{ marginBottom: mode === 'register' ? '16px' : '24px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
               Contraseña
             </label>
             <input
@@ -160,17 +161,18 @@ export function LoginScreen({ onLogin }) {
               placeholder="••••••••"
               style={{
                 width: '100%', padding: '12px 16px',
-                borderRadius: '12px', border: '1.5px solid #e2e8f0',
+                borderRadius: '12px', border: '1.5px solid var(--border)',
+                background: 'var(--input-bg, transparent)', color: 'var(--text-primary)',
                 fontSize: '15px', outline: 'none', boxSizing: 'border-box',
               }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'}
-              onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+              onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 
           {mode === 'register' && (
             <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
                 Confirmar contraseña
               </label>
               <input
@@ -180,20 +182,22 @@ export function LoginScreen({ onLogin }) {
                 placeholder="••••••••"
                 style={{
                   width: '100%', padding: '12px 16px',
-                  borderRadius: '12px', border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px', border: '1.5px solid var(--border)',
+                  background: 'var(--input-bg, transparent)', color: 'var(--text-primary)',
                   fontSize: '15px', outline: 'none', boxSizing: 'border-box',
                 }}
-                onFocus={e => e.target.style.borderColor = '#6366f1'}
-                onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
             </div>
           )}
 
           {error && (
             <div style={{
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+              background: 'color-mix(in srgb, var(--accent-red) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)',
               borderRadius: '10px', padding: '10px 14px',
-              color: '#ef4444', fontSize: '13px', marginBottom: '16px',
+              color: 'var(--accent-red)', fontSize: '13px', marginBottom: '16px',
             }}>
               ⚠️ {error}
             </div>
@@ -204,7 +208,7 @@ export function LoginScreen({ onLogin }) {
             disabled={loading}
             style={{
               width: '100%', padding: '14px',
-              background: loading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              background: loading ? 'var(--text-quaternary)' : 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
               border: 'none', borderRadius: '12px',
               color: 'white', fontSize: '16px', fontWeight: 600,
               cursor: loading ? 'wait' : 'pointer',
@@ -218,7 +222,7 @@ export function LoginScreen({ onLogin }) {
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', fontSize: '12px', color: '#94a3b8', marginTop: '24px' }}>
+        <p style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-quaternary)', marginTop: '24px' }}>
           ZenDay — Gestión inteligente para emprendedores
         </p>
       </div>

@@ -4,16 +4,24 @@ import { useConfirm } from '../../contexts/ConfirmContext'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
-const COLORES = ['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899']
+const COLORES = ['var(--accent-green)', '#3b82f6', 'var(--accent-red)', 'var(--accent-amber)', '#8b5cf6', '#ec4899']
 
 const ESTADOS = {
-  PENDIENTE:  { label: '⏳ Pendiente',  color: '#f59e0b' },
+  PENDIENTE:  { label: '⏳ Pendiente',  color: 'var(--accent-amber)' },
   EN_PROCESO: { label: '🔨 En proceso', color: '#3b82f6' },
-  COMPLETADO: { label: '✅ Completado', color: '#10b981' },
+  COMPLETADO: { label: '✅ Completado', color: 'var(--accent-green)' },
   ENTREGADO:  { label: '📦 Entregado',  color: '#8b5cf6' },
 }
 
-const EMPTY_FORM = { cliente: '', articuloId: '', articuloNombre: '', inicio: '', fin: '', color: '#10b981' }
+const EMPTY_FORM = { 
+  cliente: '', 
+  articuloId: '', 
+  articuloNombre: '', 
+  inicio: '', 
+  fin: '', 
+  color: 'var(--accent-green)',
+  costoEnvio: ''  // ← NUEVO: campo para costo de envío
+}
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -32,6 +40,29 @@ function formatearFechaMostrar(fechaStr) {
   const fecha = formatearFechaLocal(fechaStr)
   if (!fecha) return ''
   return fecha.toLocaleDateString()
+}
+
+// ─── VALIDACIÓN DE NÚMEROS ────────────────────────────────────────────────────
+function validarNumero(valor) {
+  if (!valor) return { esValido: true, numero: 0 }
+  // Eliminar puntos y espacios, aceptar solo números y punto decimal
+  const limpio = valor.toString().replace(/\./g, '').replace(/\s/g, '')
+  const numero = parseFloat(limpio)
+  if (isNaN(numero)) {
+    return { esValido: false, numero: 0, error: 'Debe ingresar un número válido' }
+  }
+  if (numero < 0) {
+    return { esValido: false, numero: 0, error: 'El costo no puede ser negativo' }
+  }
+  if (numero > 99999999) {
+    return { esValido: false, numero: 0, error: 'El costo es demasiado alto' }
+  }
+  return { esValido: true, numero, error: null }
+}
+
+function formatearNumeroInput(valor) {
+  if (!valor && valor !== 0) return ''
+  return valor.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
 // ─── COMPONENTE ───────────────────────────────────────────────────────────────
@@ -67,6 +98,7 @@ export default function EmprendedorPanel({
   const [mostrarCrear, setMostrarCrear] = useState(false)
   const [pedidoSeleccionadoId, setPedidoSeleccionadoId] = useState(null)
   const [nuevoPedido, setNuevoPedido] = useState(EMPTY_FORM)
+  const [errorEnvio, setErrorEnvio] = useState(null)
   
   // Estado para búsqueda de productos
   const [busquedaProducto, setBusquedaProducto] = useState('')
@@ -94,6 +126,10 @@ export default function EmprendedorPanel({
       const next = typeof updater === 'function' ? updater(prev) : updater
       try {
         localStorage.setItem('zenday-emprendedor-pedidos', JSON.stringify(next))
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'zenday-emprendedor-pedidos',
+          newValue: JSON.stringify(next)
+        }))
       } catch (e) {
         console.error('[EmprendedorPanel] Error saving pedidos:', e)
       }
@@ -112,8 +148,10 @@ export default function EmprendedorPanel({
     if (!busquedaProducto.trim()) return articulosConStock.slice(0, 10)
     const query = busquedaProducto.toLowerCase()
     return articulosConStock.filter(p => 
-      p.name.toLowerCase().includes(query) || 
-      (p.code && p.code.toLowerCase().includes(query))
+      // Un codigo de articulo numerico salido de Excel tiraba abajo la busqueda
+      // entera: escribias una letra y la pantalla se rompia.
+      texto(p.name).toLowerCase().includes(query) ||
+      texto(p.code).toLowerCase().includes(query)
     ).slice(0, 10)
   }, [articulosConStock, busquedaProducto])
 
@@ -177,8 +215,15 @@ export default function EmprendedorPanel({
       return
     }
 
+    const costoEnvio = pedido.costoEnvio || 0
+    const precioTotal = (articulo.price || 0) + costoEnvio
+
     const ok = await confirm(
-      `¿Entregar "${articulo.name}" a ${pedido.cliente}?\nStock actual: ${articulo.stock} → ${articulo.stock - 1}`,
+      `¿Entregar "${articulo.name}" a ${pedido.cliente}?\n\n` +
+      `💰 Precio artículo: $${(articulo.price || 0).toLocaleString()} UYU\n` +
+      `${costoEnvio > 0 ? `🚚 Costo envío: $${costoEnvio.toLocaleString()} UYU\n` : ''}` +
+      `💸 Total a cobrar: $${precioTotal.toLocaleString()} UYU\n\n` +
+      `Stock actual: ${articulo.stock} → ${articulo.stock - 1}`,
       'Confirmar entrega'
     )
     if (!ok) return
@@ -191,13 +236,16 @@ export default function EmprendedorPanel({
       )
     )
 
+    const pacienteEncontrado = (patients || []).find(p => p.name === pedido.cliente)
+    
     const nuevaAppointment = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       patientName: pedido.cliente,
-      patientId: (patients || []).find(p => p.name === pedido.cliente)?.id || null,
+      patientId: pacienteEncontrado?.id || null,
       productId: String(articulo.id),
       productName: articulo.name,
-      price: articulo.price || 0,
+      price: precioTotal, // ← Precio TOTAL incluyendo envío
+      shippingCost: costoEnvio, // ← Guardar costo de envío por separado
       startTime: new Date().toISOString(),
       status: 'delivered',
       paid: false,
@@ -208,35 +256,93 @@ export default function EmprendedorPanel({
     if (typeof setAppointments === 'function') {
       setAppointments(prev => [...prev, nuevaAppointment])
     } else if (addAppointment) {
-      addAppointment(nuevaAppointment)
+      // FIX: addAppointment devuelve false si el horario choca. Sin esto, el
+      // pedido de producción se marcaba como creado y nunca llegaba a la agenda.
+      if (addAppointment(nuevaAppointment) === false) {
+        toast.addToast('❌ Ya hay otro pedido en ese horario de entrega', 'error')
+        return
+      }
     }
 
     savePedidos(prev => prev.filter(p => p.id !== pedido.id))
-    toast.addToast(`✅ "${articulo.name}" entregado a ${pedido.cliente}`, 'success')
+    
+    const mensaje = costoEnvio > 0 
+      ? `✅ "${articulo.name}" entregado a ${pedido.cliente} (${formatCurrency(precioTotal)} con envío)`
+      : `✅ "${articulo.name}" entregado a ${pedido.cliente}`
+    
+    toast.addToast(mensaje, 'success')
     setPedidoSeleccionadoId(null)
   }, [products, setProducts, patients, addAppointment, setAppointments, savePedidos, confirm, toast])
 
-  // ── Eliminar ──────────────────────────────────────────────────────────────
+  // ── ELIMINAR PEDIDO CON VALIDACIÓN (BAJA LÓGICA) ──────────────────────────
   const eliminarPedido = useCallback(async (id) => {
-    if (!await confirm('¿Eliminar este pedido?', 'Confirmar')) return
+    const pedidoAEliminar = pedidos.find(p => p.id === id)
+    
+    if (!pedidoAEliminar) {
+      toast.addToast('❌ Pedido no encontrado', 'error')
+      return
+    }
+    
+    if (pedidoAEliminar.estado === 'ENTREGADO') {
+      toast.addToast('❌ No se puede eliminar un pedido ya entregado', 'error')
+      return
+    }
+    
+    if (pedidoAEliminar.estado === 'COMPLETADO') {
+      toast.addToast('❌ No se puede eliminar un pedido completado. Primero debe ser entregado o rechazado.', 'error')
+      return
+    }
+    
+    const confirmado = await confirm(
+      `¿Eliminar el pedido de "${pedidoAEliminar.cliente}" para "${pedidoAEliminar.articuloNombre}"?\nEsta acción no se puede deshacer.`,
+      'Confirmar eliminación'
+    )
+    
+    if (!confirmado) return
+    
     savePedidos(prev => prev.filter(p => p.id !== id))
-    toast.addToast('🗑️ Pedido eliminado', 'info')
-  }, [confirm, savePedidos, toast])
+    toast.addToast('🗑️ Pedido eliminado correctamente', 'info')
+    setPedidoSeleccionadoId(null)
+  }, [pedidos, confirm, savePedidos, toast])
 
-  // ── Limpiar todos ─────────────────────────────────────────────────────────
+  // ── LIMPIAR TODOS LOS PEDIDOS CON VALIDACIÓN ──────────────────────────────
   const limpiarTodos = useCallback(async () => {
-    if (!await confirm('¿Limpiar TODOS los pedidos?', 'Confirmar')) return
-    savePedidos([])
-    toast.addToast('🧹 Pedidos eliminados', 'info')
-  }, [confirm, savePedidos, toast])
+    const pedidosNoEntregados = pedidos.filter(p => p.estado !== 'ENTREGADO')
+    
+    if (pedidosNoEntregados.length === 0) {
+      toast.addToast('No hay pedidos activos para limpiar', 'info')
+      return
+    }
+    
+    const confirmado = await confirm(
+      `¿Limpiar TODOS los ${pedidosNoEntregados.length} pedidos activos?\n⚠️ Esta acción es irreversible.`,
+      'Confirmar limpieza total'
+    )
+    
+    if (!confirmado) return
+    
+    const pedidosEntregados = pedidos.filter(p => p.estado === 'ENTREGADO')
+    savePedidos(pedidosEntregados)
+    toast.addToast(`🧹 ${pedidosNoEntregados.length} pedidos eliminados`, 'info')
+    setPedidoSeleccionadoId(null)
+  }, [pedidos, confirm, savePedidos, toast])
 
-  // ── Crear pedido ──────────────────────────────────────────────────────────
+  // ── Crear pedido (CON COSTO DE ENVÍO) ─────────────────────────────────────
   const crearPedido = useCallback(() => {
-    const { cliente, articuloId, inicio, fin } = nuevoPedido
+    const { cliente, articuloId, inicio, fin, costoEnvio } = nuevoPedido
     
     if (!cliente || !articuloId || !inicio || !fin) {
       toast.addToast('Completá todos los campos', 'error')
       return
+    }
+    
+    // Validar costo de envío
+    if (costoEnvio) {
+      const validacion = validarNumero(costoEnvio)
+      if (!validacion.esValido) {
+        toast.addToast(`❌ ${validacion.error}`, 'error')
+        return
+      }
     }
     
     const fechaInicio = formatearFechaLocal(inicio)
@@ -259,6 +365,9 @@ export default function EmprendedorPanel({
       return
     }
 
+    const costoEnvioNumero = validarNumero(costoEnvio).numero
+    const precioTotal = (articulo.price || 0) + costoEnvioNumero
+
     const nuevo = {
       id: generarIdPedido(),
       cliente,
@@ -269,14 +378,39 @@ export default function EmprendedorPanel({
       color: nuevoPedido.color,
       estado: 'PENDIENTE',
       fechaCreacion: new Date().toISOString(),
+      costoEnvio: costoEnvioNumero, // ← GUARDAR COSTO DE ENVÍO
+      precioArticulo: articulo.price,
+      precioTotal: precioTotal,
     }
 
     savePedidos(prev => [...prev, nuevo])
     setNuevoPedido(EMPTY_FORM)
     setBusquedaProducto('')
     setMostrarCrear(false)
-    toast.addToast('✅ Pedido creado', 'success')
+    setErrorEnvio(null)
+    
+    const mensaje = costoEnvioNumero > 0
+      ? `✅ Pedido creado (${formatCurrency(precioTotal)} con envío)`
+      : '✅ Pedido creado'
+    toast.addToast(mensaje, 'success')
   }, [nuevoPedido, products, savePedidos, toast])
+
+  // ── Manejar cambio en costo de envío ───────────────────────────────────────
+  const handleCostoEnvioChange = useCallback((e) => {
+    const valor = e.target.value
+    setNuevoPedido(prev => ({ ...prev, costoEnvio: valor }))
+    
+    if (valor) {
+      const validacion = validarNumero(valor)
+      if (!validacion.esValido) {
+        setErrorEnvio(validacion.error)
+      } else {
+        setErrorEnvio(null)
+      }
+    } else {
+      setErrorEnvio(null)
+    }
+  }, [])
 
   // ── Seleccionar producto desde el dropdown ────────────────────────────────
   const seleccionarProducto = useCallback((producto) => {
@@ -408,6 +542,34 @@ export default function EmprendedorPanel({
   }, [products, nuevoPedido.articuloId, nuevoPedido.articuloNombre])
 
   const productoSeleccionadoSinStock = productoSeleccionado && (productoSeleccionado.stock || 0) === 0
+  
+  // Calcular precio total con envío para preview
+  const precioArticulo = productoSeleccionado?.price || 0
+  const costoEnvioNumero = validarNumero(nuevoPedido.costoEnvio).numero
+  const precioConEnvio = precioArticulo + costoEnvioNumero
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('es-UY', { style: 'currency', currency: 'UYU' }).format(value)
+  }
+
+  // ── Sincronizar con evento storage ─────────────────────────────────────────
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'zenday-emprendedor-pedidos' && e.newValue) {
+        try {
+          const newData = JSON.parse(e.newValue)
+          if (Array.isArray(newData)) {
+            setPedidos(newData.filter(p => p?.id))
+          }
+        } catch (err) {
+          console.error('[EmprendedorPanel] Error parsing storage event:', err)
+        }
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -423,6 +585,7 @@ export default function EmprendedorPanel({
             onClick={() => {
               setNuevoPedido(EMPTY_FORM)
               setBusquedaProducto('')
+              setErrorEnvio(null)
               setMostrarCrear(true)
             }}
           >
@@ -555,8 +718,8 @@ export default function EmprendedorPanel({
                         {p.code && <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Código: {p.code}</div>}
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, color: '#10b981' }}>${p.price}</div>
-                        <div style={{ fontSize: 11, color: '#10b981' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--accent-green)' }}>${p.price}</div>
+                        <div style={{ fontSize: 11, color: 'var(--accent-green)' }}>
                           Stock: {p.stock} uds
                         </div>
                       </div>
@@ -616,7 +779,7 @@ export default function EmprendedorPanel({
                   : 'rgba(16,185,129,0.15)', 
                 borderRadius: '8px',
                 fontSize: '13px',
-                color: productoSeleccionadoSinStock ? '#ef4444' : '#10b981',
+                color: productoSeleccionadoSinStock ? 'var(--accent-red)' : 'var(--accent-green)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
@@ -638,7 +801,7 @@ export default function EmprendedorPanel({
                 background: 'rgba(239,68,68,0.1)', 
                 borderRadius: '8px',
                 fontSize: '12px',
-                color: '#ef4444'
+                color: 'var(--accent-red)'
               }}>
                 ⚠️ Este producto no tiene stock disponible. Agrega stock en "Artículos" para poder crear el pedido.
               </div>
@@ -668,6 +831,79 @@ export default function EmprendedorPanel({
             </div>
           </div>
 
+          {/* ─── COSTO DE ENVÍO (NUEVO) ─── */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>🚚 Costo de envío (opcional)</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ 
+                position: 'absolute', 
+                left: '12px', 
+                top: '50%', 
+                transform: 'translateY(-50%)',
+                color: 'var(--text-tertiary)',
+                fontWeight: 600
+              }}>$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Ej: 150"
+                value={nuevoPedido.costoEnvio}
+                onChange={handleCostoEnvioChange}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 28px',
+                  borderRadius: '12px',
+                  border: errorEnvio ? '1px solid #ef4444' : '1px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+            {errorEnvio && (
+              <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--accent-red)' }}>
+                ❌ {errorEnvio}
+              </div>
+            )}
+            {!errorEnvio && nuevoPedido.costoEnvio && validarNumero(nuevoPedido.costoEnvio).numero > 0 && (
+              <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                💡 Sumará ${validarNumero(nuevoPedido.costoEnvio).numero} al precio final
+              </div>
+            )}
+          </div>
+
+          {/* Preview de precio total */}
+          {productoSeleccionado && !productoSeleccionadoSinStock && (
+            <div style={{ 
+              marginBottom: '16px', 
+              padding: '12px', 
+              background: 'rgba(99,102,241,0.08)', 
+              borderRadius: '12px',
+              border: '1px solid rgba(99,102,241,0.15)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+                <span>💰 Precio artículo:</span>
+                <strong>{formatCurrency(precioArticulo)}</strong>
+              </div>
+              {costoEnvioNumero > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+                  <span>🚚 Costo envío:</span>
+                  <strong>{formatCurrency(costoEnvioNumero)}</strong>
+                </div>
+              )}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                fontSize: '14px', 
+                paddingTop: '8px', 
+                borderTop: '1px dashed rgba(99,102,241,0.2)',
+                fontWeight: 700
+              }}>
+                <span>💸 Total a cobrar:</span>
+                <span style={{ color: 'var(--accent-green)' }}>{formatCurrency(precioConEnvio)}</span>
+              </div>
+            </div>
+          )}
+
           {/* Selector de color */}
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>🎨 Color</label>
@@ -694,26 +930,26 @@ export default function EmprendedorPanel({
           {/* Botón crear */}
           <button 
             onClick={crearPedido}
-            disabled={!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock}
+            disabled={!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio}
             style={{
               width: '100%',
               padding: '14px',
-              background: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock)
+              background: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio)
                 ? 'var(--bg-tertiary)'
                 : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               border: 'none',
               borderRadius: '12px',
-              color: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock)
+              color: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio)
                 ? 'var(--text-tertiary)'
                 : 'white',
               fontWeight: 700,
               fontSize: '16px',
-              cursor: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock)
+              cursor: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio)
                 ? 'not-allowed'
                 : 'pointer'
             }}
           >
-            + Crear pedido
+            {productoSeleccionadoSinStock ? '⚠️ Sin stock disponible' : '+ Crear pedido'}
           </button>
         </div>
       )}
@@ -768,6 +1004,9 @@ export default function EmprendedorPanel({
               <div className="columna-cards" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {lista.map(p => {
                   const nombreActual = products.find(pr => String(pr.id) === String(p.articuloId))?.name || p.articuloNombre
+                  const tieneEnvio = (p.costoEnvio || 0) > 0
+                  const precioTotal = (p.precioArticulo || 0) + (p.costoEnvio || 0)
+                  
                   return (
                     <div
                       key={p.id}
@@ -789,16 +1028,21 @@ export default function EmprendedorPanel({
                         <button
                           className="btn-eliminar"
                           onClick={e => { e.stopPropagation(); eliminarPedido(p.id) }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)' }}
+                          title="Eliminar pedido"
                         >
                           🗑️
                         </button>
                       </div>
                       <div className="card-articulo" style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                         {nombreActual}
+                        {tieneEnvio && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--accent-green)' }}>🚚 +${p.costoEnvio}</span>}
                       </div>
-                      <div className="card-fechas" style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                      <div className="card-fechas" style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                         📅 {formatearFechaMostrar(p.inicio)} → {formatearFechaMostrar(p.fin)}
+                      </div>
+                      <div className="card-precio" style={{ fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>
+                        Total: {formatCurrency(precioTotal)}
                       </div>
 
                       {pedidoSeleccionado?.id === p.id && (
@@ -811,7 +1055,7 @@ export default function EmprendedorPanel({
                           )}
                           {p.estado === 'EN_PROCESO' && (
                             <button onClick={() => { cambiarEstado(p.id, 'COMPLETADO'); setPedidoSeleccionadoId(null) }}
-                              style={{ padding: '6px 12px', background: '#10b981', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
+                              style={{ padding: '6px 12px', background: 'var(--accent-green)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
                               ✅ Completar
                             </button>
                           )}
@@ -891,7 +1135,7 @@ export default function EmprendedorPanel({
                             whiteSpace: 'nowrap',
                             color: 'white'
                           }}
-                          title={`${p.cliente} — ${nombreActual}`}
+                          title={`${p.cliente} — ${nombreActual}${p.costoEnvio ? ' (con envío)' : ''}`}
                           onClick={() => setPedidoSeleccionadoId(p.id)}
                         >
                           {(nombreActual || '').substring(0, 10)}
@@ -913,6 +1157,7 @@ export default function EmprendedorPanel({
         <div className="calendario-leyenda" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
           <span>💡 Click en el calendario para seleccionar</span>
           <span>🖱️ Arrastrá tarjetas para cambiar estado</span>
+          <span>🚚 Los pedidos con envío tienen un badge</span>
         </div>
       </div>
     </div>

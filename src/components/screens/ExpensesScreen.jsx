@@ -3,7 +3,7 @@ import { BackButton } from '../common/BackButton'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
-import { formatCurrency } from '../../utils/helpers'
+import { formatCurrency, newId, todayKey } from '../../utils/helpers'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
@@ -24,13 +24,16 @@ const CATEGORY_ICONS = {
   Otros:        '💸',
 }
 
-const EMPTY_FORM = {
+// FIX: era una constante de módulo, así que `todayKey()` se evaluaba UNA vez al
+// cargar la app y la fecha quedaba congelada. Dejando ZenDay abierta de un día
+// para el otro, los gastos nuevos salían con la fecha de ayer.
+const emptyForm = () => ({
   description: '',
   amount:      '',
   category:    'Otros',
-  date:        new Date().toISOString().split('T')[0],
+  date:        todayKey(),
   notes:       '',
-}
+})
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -46,12 +49,12 @@ function formatLocalDate(dateStr) {
 export function ExpensesScreen({ expenses, setExpenses, nav }) {
   const focusRef = useScreenFocus()
   const toast    = useToast()
-  const confirm  = useConfirm()
+  const { confirm }  = useConfirm()
 
   const [searchQuery,    setSearchQuery]    = useState('')
   const [showForm,       setShowForm]       = useState(false)
   const [editingExpense, setEditingExpense] = useState(null)
-  const [formData,       setFormData]       = useState(EMPTY_FORM)
+  const [formData,       setFormData]       = useState(emptyForm)
 
   // ── Datos derivados ───────────────────────────────────────────────────────
   const filteredExpenses = useMemo(() => {
@@ -79,7 +82,7 @@ export function ExpensesScreen({ expenses, setExpenses, nav }) {
   // ── Abrir / cerrar form ───────────────────────────────────────────────────
   const openNewForm = useCallback(() => {
     setEditingExpense(null)
-    setFormData(EMPTY_FORM)
+    setFormData(emptyForm())
     setShowForm(true)
   }, [])
 
@@ -89,7 +92,7 @@ export function ExpensesScreen({ expenses, setExpenses, nav }) {
       description: expense.description || '',
       amount:      expense.amount?.toString() || '',
       category:    expense.category || 'Otros',
-      date:        expense.date || EMPTY_FORM.date,
+      date:        expense.date || todayKey(),
       notes:       expense.notes || '',
     })
     setShowForm(true)
@@ -98,7 +101,7 @@ export function ExpensesScreen({ expenses, setExpenses, nav }) {
   const closeForm = useCallback(() => {
     setShowForm(false)
     setEditingExpense(null)
-    setFormData(EMPTY_FORM)
+    setFormData(emptyForm())
   }, [])
 
   // ── Guardar ───────────────────────────────────────────────────────────────
@@ -120,7 +123,7 @@ export function ExpensesScreen({ expenses, setExpenses, nav }) {
       toast.addToast('Gasto actualizado', 'success')
     } else {
       setExpenses(prev => [...prev, {
-        id:        Date.now(),
+        id: newId(),
         ...formData,
         amount,
         createdAt: new Date().toISOString(),

@@ -17,8 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // ========== EVENTOS DE VENTANA ==========
   onWindowMaximized: (callback) => {
-    ipcRenderer.on('window-maximized', (_, isMaximized) => callback(isMaximized))
-    return () => ipcRenderer.removeListener('window-maximized', callback)
+    const handler = (_, isMaximized) => callback(isMaximized)
+    ipcRenderer.on('window-maximized', handler)
+    return () => ipcRenderer.removeListener('window-maximized', handler)
   },
   
   // ========== UTILIDADES ==========
@@ -37,6 +38,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeviceId: () => ipcRenderer.invoke('get-device-id'),
   deleteLicense: () => ipcRenderer.invoke('delete-license'),
   
+  // ========== ADJUNTOS DE CLIENTES ==========
+  docsList:      (patientId)             => ipcRenderer.invoke('docs-list', patientId),
+  docsSave:      (patientId, meta, data) => ipcRenderer.invoke('docs-save', patientId, meta, data),
+  docsRead:      (patientId, docId)      => ipcRenderer.invoke('docs-read', patientId, docId),
+  docsDelete:    (patientId, docId)      => ipcRenderer.invoke('docs-delete', patientId, docId),
+  docsDeleteAll: (patientId)             => ipcRenderer.invoke('docs-delete-all', patientId),
+  docsMigrate:   (patientId, docs)       => ipcRenderer.invoke('docs-migrate', patientId, docs),
+
+  // ========== REGISTRO DE ERRORES ==========
+  logError:     (payload) => ipcRenderer.invoke('log-error', payload),
+  openErrorLog: ()        => ipcRenderer.invoke('open-error-log'),
+
   // ========== VERSIÓN DE LA APP ==========
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   
@@ -45,8 +58,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ========== AUTO-ACTUALIZACIONES ==========
   onUpdateDownloaded: (callback) => {
-    ipcRenderer.on('update-downloaded', callback)
-    return () => ipcRenderer.removeListener('update-downloaded', callback)
+    const handler = (_, info) => callback(info)
+    ipcRenderer.on('update-downloaded', handler)
+    return () => ipcRenderer.removeListener('update-downloaded', handler)
   },
   installUpdate: () => ipcRenderer.invoke('install-update'),
 })

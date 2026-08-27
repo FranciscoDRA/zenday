@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { BackButton } from '../common/BackButton'
+import { PaymentDateModal } from '../common/PaymentDateModal'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
-import { formatCurrency } from '../../utils/helpers'
+import { formatCurrency, toLocalDateKey, todayKey } from '../../utils/helpers'
+
 
 // ============================================
 // CONSTANTES FUERA DEL COMPONENTE
@@ -58,19 +60,19 @@ const formatDate = (dateStr) => {
   })
 }
 
-// CORREGIDO: parseLocalDate para evitar problemas UTC
 const parseLocalDate = (str) => {
   if (!str) return null
   const [y, m, d] = str.split('-').map(Number)
   if (isNaN(y) || isNaN(m) || isNaN(d)) return null
-  return new Date(y, m - 1, d, 12, 0, 0)  // Mediodía UTC-3
+  return new Date(y, m - 1, d, 12, 0, 0)
 }
 
+// Antes terminaba en `toISOString().split('T')[0]`, que pasa a UTC. En Uruguay
+// (UTC-3) una cita de las 21:30 daba el dia SIGUIENTE: abrias reprogramar y el
+// campo mostraba manana. Si guardabas sin mirar, la cita se corria un dia.
 const formatDateForInput = (dateStr) => {
   if (!dateStr) return ''
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return ''
-  return date.toISOString().split('T')[0]
+  return toLocalDateKey(dateStr)
 }
 
 const formatPhoneForWhatsApp = (phone) => {
@@ -130,8 +132,11 @@ export function AppointmentDetailScreen({
   const [isProcessing, setIsProcessing] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
-  const [isEditingDate, setIsEditingDate] = useState(false)  // ← NUEVO: para edición inline de fecha
-  const [tempDate, setTempDate] = useState('')  // ← NUEVO: fecha temporal para edición
+  const [isEditingDate, setIsEditingDate] = useState(false)
+  const [tempDate, setTempDate] = useState('')
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  // Nuevo estado para editar fecha de pago
+  const [showEditPaymentDateModal, setShowEditPaymentDateModal] = useState(false)
 
   useEffect(() => {
     setIsEditing(false)
@@ -140,6 +145,8 @@ export function AppointmentDetailScreen({
     setCancelReason('')
     setIsEditingDate(false)
     setTempDate('')
+    setShowPaymentModal(false)
+    setShowEditPaymentDateModal(false)
   }, [appointment?.id])
 
   const isPaid = appointment?.paid === true || appointment?.paymentStatus === 'paid'
@@ -148,9 +155,10 @@ export function AppointmentDetailScreen({
   const whatsAppNumber = formatPhoneForWhatsApp(appointment?.patientPhone)
 
   const canEdit = appointment && !['completed', 'cancelled', 'delivered'].includes(appointment.status)
-const canEditDate = !!appointment 
   const canDelete = appointment && (!appointment.paid || appointment.status === 'scheduled')
   const canMarkAsPaid = appointment && !isPaid && price > 0 && ['completed', 'delivered', 'picked'].includes(appointment.status)
+  // Puede editar la fecha de pago si ya está pagado
+  const canEditPaymentDate = appointment && isPaid
 
   const getAvailableStatuses = useCallback((currentStatus) => {
     const allStatuses = [
@@ -175,7 +183,6 @@ const canEditDate = !!appointment
   // HANDLERS
   // ============================================
 
-  // CORREGIDO: Función para editar fecha
   const handleDateEditStart = () => {
     const currentDate = appointment.orderDate || appointment.startTime
     setTempDate(formatDateForInput(currentDate))
@@ -199,24 +206,24 @@ const canEditDate = !!appointment
       return
     }
     
-    // Mantener la misma hora
     const currentStartTime = new Date(appointment.startTime)
     newDate.setHours(currentStartTime.getHours(), currentStartTime.getMinutes(), 0, 0)
     
     const newEndTime = new Date(newDate.getTime() + (appointment.duration || 60) * 60000)
     
-    try {
-      await updateAppointment(appointment.id, {
-        startTime: newDate.toISOString(),
-        endTime: newEndTime.toISOString(),
-        ...(appointment.orderDate && { orderDate: newDate.toISOString() })
-      })
-      toast.addToast('✅ Fecha actualizada', 'success')
-      setIsEditingDate(false)
-    } catch (err) {
-      console.error('Error updating date:', err)
-      toast.addToast('❌ Error al actualizar fecha', 'error')
-    }
+    // updateAppointment es SINCRONA y devuelve false: no lanza nunca. El
+    // try/catch de antes no se ejecutaba jamas y el `await false` seguia de
+    // largo, asi que al mover una cita a un horario ocupado salian los dos
+    // toasts juntos y el editor se cerraba mostrando la fecha vieja.
+    const actualizada = updateAppointment(appointment.id, {
+      startTime: newDate.toISOString(),
+      endTime: newEndTime.toISOString(),
+      ...(appointment.orderDate && { orderDate: newDate.toISOString() })
+    })
+    if (actualizada === false) return   // updateAppointment ya avisó por qué
+
+    toast.addToast('✅ Fecha actualizada', 'success')
+    setIsEditingDate(false)
   }
 
   const handleStatusChange = async (newStatus) => {
@@ -261,13 +268,19 @@ const canEditDate = !!appointment
         reason = reasonResult || 'No especificado'
       }
       
-      if (updateStatus) {
-        updateStatus(appointment.id, newStatus)
-      } else {
-        updateAppointment(appointment.id, { 
-          status: newStatus,
-          ...(reason && { cancelReason: reason, cancelledAt: new Date().toISOString() })
-        })
+      // FIX: ninguna de las dos ramas miraba el retorno. Si el cambio se
+      // rechazaba (pedido inexistente, solapamiento), el código seguía de largo
+      // y registraba el cambio en auditoría como si hubiera pasado.
+      const cambiado = updateStatus
+        ? updateStatus(appointment.id, newStatus)
+        : updateAppointment(appointment.id, {
+            status: newStatus,
+            ...(reason && { cancelReason: reason, cancelledAt: new Date().toISOString() })
+          })
+
+      if (cambiado === false) {
+        setIsProcessing(false)
+        return
       }
       
       console.info('[AUDIT] Status changed:', {
@@ -288,43 +301,81 @@ const canEditDate = !!appointment
     }
   }
 
-  const handleMarkAsPaid = async () => {
+  // ============================================
+  // HANDLER DE PAGO (REGISTRAR)
+  // ============================================
+  const handleMarkAsPaid = () => {
+    setShowPaymentModal(true)
+  }
+
+  // El modal ahora manda (fecha, medio). Sin declarar el segundo argumento,
+  // `metodo` seria una variable inexistente y esto reventaria al cobrar.
+  const handlePaymentConfirm = (date, metodo) => {
+    // FIX: acá se está registrando PLATA. Si markAsPaid fallaba, el modal se
+    // cerraba igual y el usuario quedaba convencido de que cobró.
+    const cobrado = markAsPaid
+      ? markAsPaid(appointment.id, date, metodo)
+      : updateAppointment(appointment.id, {
+          paid: true,
+          paymentStatus: 'paid',
+          paymentDate: date || new Date().toISOString()
+        })
+
+    if (cobrado === false) return
+    
+    console.info('[AUDIT] Payment registered:', {
+      appointmentId: appointment.id,
+      amount: price,
+      paymentDate: date,
+      user: localStorage.getItem('zenday-user-name') || 'Usuario',
+      timestamp: new Date().toISOString()
+    })
+    
+    toast.addToast('💰 Pago registrado exitosamente', 'success')
+    setShowPaymentModal(false)
+  }
+
+  const handlePaymentCancel = () => {
+    setShowPaymentModal(false)
+  }
+
+  // ============================================
+  // HANDLER PARA EDITAR FECHA DE PAGO (NUEVO)
+  // ============================================
+  const handleEditPaymentDate = () => {
+    setShowEditPaymentDateModal(true)
+  }
+
+  const handleEditPaymentDateConfirm = async (newDate, metodo) => {
     if (!appointment) return
-    
-    const confirmPayment = await confirm(
-      '💰 REGISTRAR PAGO\n\n' +
-      `Cliente: ${appointment.patientName}\n` +
-      `Monto: ${formatCurrency(price, 'UYU')}\n\n` +
-      '¿Confirmar pago recibido?',
-      'Confirmar pago'
-    )
-    
-    if (!confirmPayment) return
     
     setIsProcessing(true)
     
     try {
+      // Actualizar la fecha de pago
       if (markAsPaid) {
-        markAsPaid(appointment.id)
+        // Si tenemos markAsPaid, la usamos para actualizar
+        await markAsPaid(appointment.id, newDate, metodo)
       } else {
-        updateAppointment(appointment.id, { 
-          paid: true, 
-          paymentStatus: 'paid',
-          paymentDate: new Date().toISOString()
+        // Actualizar directamente el appointment
+        await updateAppointment(appointment.id, { 
+          paymentDate: newDate || new Date().toISOString()
         })
       }
       
-      console.info('[AUDIT] Payment registered:', {
+      console.info('[AUDIT] Payment date updated:', {
         appointmentId: appointment.id,
-        amount: price,
+        oldDate: appointment.paymentDate,
+        newDate: newDate,
         user: localStorage.getItem('zenday-user-name') || 'Usuario',
         timestamp: new Date().toISOString()
       })
       
-      toast.addToast('💰 Pago registrado exitosamente', 'success')
+      toast.addToast('📅 Fecha de pago actualizada', 'success')
+      setShowEditPaymentDateModal(false)
     } catch (error) {
-      console.error('Payment error:', error)
-      toast.addToast('❌ Error al registrar pago', 'error')
+      console.error('Error updating payment date:', error)
+      toast.addToast('❌ Error al actualizar la fecha de pago', 'error')
     } finally {
       setIsProcessing(false)
     }
@@ -396,7 +447,10 @@ const canEditDate = !!appointment
       timestamp: new Date().toISOString()
     })
     
-    deleteAppointment(appointment.id)
+    // FIX: deleteAppointment devuelve false si el usuario cancela la
+    // confirmación o si el pedido está protegido. Antes salía "🗑️ Cita
+    // eliminada" y volvía atrás con la cita todavía en la agenda.
+    if (await deleteAppointment(appointment.id) === false) return
     toast.addToast('🗑️ Cita eliminada', 'info')
     nav.goBack()
   }
@@ -434,6 +488,7 @@ Fecha: ${formatDate(appointment.startTime)}
 Servicio: ${appointment.productName || 'No especificado'}
 Precio: ${price > 0 ? formatCurrency(price, 'UYU') : 'No especificado'}
 Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
+${appointment.paymentDate ? `Fecha de pago: ${new Date(appointment.paymentDate).toLocaleDateString()}` : ''}
     `.trim()
     
     try {
@@ -502,13 +557,6 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
     )
   }
 
-  // Obtener la fecha para mostrar en el input
-  const displayDate = appointment.orderDate || appointment.startTime
-  const orderDateObj = new Date(displayDate)
-  const orderDateString = !isNaN(orderDateObj.getTime()) 
-    ? orderDateObj.toISOString().split('T')[0] 
-    : ''
-
   return (
     <div className="appointment-detail-screen">
       {/* Header */}
@@ -533,40 +581,35 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
             </button>
           )}
           {canEdit && (
-  <button 
-    onClick={() => nav.navigate('new', { editingAppointment: appointment })}
-    style={{
-      padding: '8px 16px',
-      background: 'var(--accent-blue)',
-      border: 'none',
-      borderRadius: '20px',
-      color: 'white',
-      cursor: 'pointer',
-      fontSize: '13px'
-    }}
-  >
-    ✏️ Editar
-  </button>
-)}
-
-{appointment && (
-  <button 
-    onClick={handleDateEditStart}
-    style={{
-      padding: '8px 16px',
-      background: 'transparent',
-      border: '0.5px solid var(--border)',
-      borderRadius: '20px',
-      cursor: 'pointer',
-      fontSize: '13px',
-      color: 'var(--text-secondary)'
-    }}
-  >
-    📅 Cambiar fecha
-  </button>
-)}
+            <button 
+              onClick={() => nav.navigate('new', { editingAppointment: appointment })}
+              style={{
+                padding: '8px 16px',
+                background: 'var(--accent-blue)',
+                border: 'none',
+                borderRadius: '20px',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
               ✏️ Editar
-         
+            </button>
+          )}
+          <button 
+            onClick={handleDateEditStart}
+            style={{
+              padding: '8px 16px',
+              background: 'transparent',
+              border: '0.5px solid var(--border)',
+              borderRadius: '20px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            📅 Cambiar fecha
+          </button>
         </div>
       </div>
 
@@ -676,7 +719,6 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
       <div className="detail-section">
         <h3>📋 INFORMACIÓN</h3>
         
-        {/* CORREGIDO: Fecha editable */}
         <div className="detail-row">
           <span className="detail-label">📅 Fecha y hora</span>
           <span className="detail-value">
@@ -699,7 +741,7 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
                   onClick={handleDateEditSave}
                   style={{
                     padding: '6px 12px',
-                    background: '#10b981',
+                    background: 'var(--accent-green)',
                     border: 'none',
                     borderRadius: '8px',
                     color: 'white',
@@ -793,7 +835,6 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
           </div>
         )}
         
-        {/* Fecha del pedido (si es un pedido) */}
         {appointment.orderDate && (
           <div className="detail-row">
             <span className="detail-label">📦 Fecha del pedido</span>
@@ -825,16 +866,16 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
           <span className="detail-label">💰 Estado de pago</span>
           <span className="detail-value">
             {isPaid ? (
-              <span style={{ color: '#10b981', fontWeight: 600 }}>✅ Pagado</span>
+              <span style={{ color: 'var(--accent-green)', fontWeight: 600 }}>✅ Pagado</span>
             ) : (
-              <span style={{ color: '#f59e0b', fontWeight: 600 }}>⏳ Pendiente</span>
+              <span style={{ color: 'var(--accent-amber)', fontWeight: 600 }}>⏳ Pendiente</span>
             )}
           </span>
         </div>
         {!isPaid && price > 0 && (
           <div className="detail-row">
             <span className="detail-label">💳 Monto pendiente</span>
-            <span className="detail-value" style={{ color: '#ef4444', fontWeight: 600 }}>
+            <span className="detail-value" style={{ color: 'var(--accent-red)', fontWeight: 600 }}>
               {formatCurrency(remainingAmount, 'UYU')}
             </span>
           </div>
@@ -843,13 +884,31 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
           <div className="detail-row">
             <span className="detail-label">📅 Fecha de pago</span>
             <span className="detail-value">
-              {new Date(appointment.paymentDate).toLocaleString()}
+              {new Date(appointment.paymentDate).toLocaleDateString()}
+              {canEditPaymentDate && (
+                <button 
+                  onClick={handleEditPaymentDate}
+                  style={{ 
+                    marginLeft: '8px',
+                    padding: '2px 8px',
+                    background: 'transparent',
+                    border: '0.5px solid var(--border)',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    color: 'var(--text-tertiary)'
+                  }}
+                  disabled={isProcessing}
+                >
+                  ✏️ Editar fecha
+                </button>
+              )}
             </span>
           </div>
         )}
       </div>
 
-      {/* Botón de pago */}
+      {/* Botón de pago (solo si no está pagado) */}
       {canMarkAsPaid && (
         <div className="detail-section" style={{ background: 'rgba(16, 185, 129, 0.05)' }}>
           <button 
@@ -878,7 +937,26 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
         </div>
       )}
 
-      {/* Notas y resto del contenido igual que antes... */}
+      {/* Modal para registrar pago (nuevo) */}
+      {showPaymentModal && (
+        <PaymentDateModal
+          onConfirm={handlePaymentConfirm}
+          onCancel={handlePaymentCancel}
+          defaultDate={todayKey()}
+          title="Registrar pago"
+        />
+      )}
+
+      {/* Modal para editar fecha de pago (NUEVO) */}
+      {showEditPaymentDateModal && appointment && (
+        <PaymentDateModal
+          onConfirm={handleEditPaymentDateConfirm}
+          onCancel={() => setShowEditPaymentDateModal(false)}
+          defaultDate={appointment.paymentDate ? toLocalDateKey(appointment.paymentDate) : todayKey()}
+          title="Editar fecha de pago"
+        />
+      )}
+
       {/* Notas */}
       <div className="detail-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -966,7 +1044,6 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
           </div>
         )}
         
-        {/* Historial de notas */}
         {showHistory && appointment.notesHistory?.length > 0 && (
           <div className="notes-history" style={{
             marginTop: '16px',
@@ -1048,7 +1125,7 @@ Estado: ${STATUS_LABELS[appointment.status] || appointment.status}
               background: 'transparent',
               border: '1px solid #ef4444',
               borderRadius: '40px',
-              color: '#ef4444',
+              color: 'var(--accent-red)',
               fontWeight: 500,
               cursor: isProcessing ? 'wait' : 'pointer',
               opacity: isProcessing ? 0.5 : 1

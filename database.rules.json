@@ -1,0 +1,67 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "zenday": {
+      "$businessId": {
+        ".read": "auth != null && root.child('zenday').child($businessId).child('members').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('zenday').child($businessId).child('members').child(auth.uid).exists()",
+
+        "members": {
+          "$uid": {
+            ".write": "auth != null && root.child('zenday').child($businessId).child('members').child(auth.uid).exists()",
+            ".validate": "newData.isBoolean() || newData.hasChildren(['role'])"
+          }
+        },
+
+        "appointments": {
+          "$appointmentId": {
+            ".validate": "newData.hasChildren(['patientName', 'startTime', 'status'])",
+            "patientName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+            "startTime":   { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "status":      { ".validate": "newData.isString() && newData.val().length <= 30" }
+          }
+        },
+
+        "patients": {
+          "$patientId": {
+            ".validate": "newData.hasChildren(['name'])",
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" }
+          }
+        },
+
+        "products": {
+          "$productId": {
+            ".validate": "newData.hasChildren(['name', 'price'])",
+            "name":  { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200" },
+            "price": { ".validate": "newData.isNumber() && newData.val() >= 0" }
+          }
+        },
+
+        "expenses": {
+          "$expenseId": {
+            ".validate": "newData.hasChildren(['amount', 'date', 'category'])",
+            "amount":   { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "date":     { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "category": { ".validate": "newData.isString() && newData.val().length <= 60" }
+          }
+        }
+      }
+    },
+
+    "users": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "$userId === auth.uid",
+        ".validate": "newData.hasChildren(['businessId', 'email'])",
+        "email": { ".validate": "newData.isString() && newData.val().length <= 320" }
+      }
+    },
+
+    "productos": {
+      ".read": "auth != null",
+      ".write": false
+    }
+  }
+}

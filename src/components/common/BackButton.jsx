@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useConfirm } from '../../contexts/ConfirmContext'
 
 /**
  * Componente de botón de navegación hacia atrás para aplicación Electron
@@ -43,6 +44,8 @@ export function BackButton({
   analytics = null,
   returnDestination = null
 }) {
+  const { confirm } = useConfirm()
+
   const [isNavigating, setIsNavigating] = useState(false)
   const buttonRef = useRef(null)
   
@@ -112,8 +115,13 @@ export function BackButton({
       try {
         const hasChanges = await currentHasUnsavedChanges?.()
         if (hasChanges) {
-          const userConfirmed = window.confirm(
-            'Tienes cambios sin guardar. ¿Estás seguro de que quieres salir? Los cambios se perderán.'
+          // Era window.confirm: en Electron eso abre el cartel gris del sistema,
+          // con la ruta del archivo arriba. Al lado del resto de la app parece
+          // que algo se rompio. useConfirm usa el modal propio, que ademas se
+          // cierra con Escape y confirma con Enter.
+          const userConfirmed = await confirm(
+            'Tenés cambios sin guardar.\n\nSi salís ahora se pierden.',
+            'Salir sin guardar'
           )
           if (!userConfirmed) return
         }

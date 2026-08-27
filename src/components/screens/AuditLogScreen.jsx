@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { BackButton } from '../common/BackButton'
 import { getAuditLogs, clearAuditLogs } from '../../utils/audit'
+import { todayKey } from '../../utils/helpers'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
@@ -65,7 +66,7 @@ export function AuditLogScreen({ nav }) {
   // Guard: si AuthProvider no está montado, user = null
   const { user } = useAuthSafe()
 
-  const confirm = useConfirm()
+  const { confirm } = useConfirm()
   const toast   = useToast()
 
   const [allLogs,      setAllLogs]      = useState([])
@@ -179,7 +180,7 @@ export function AuditLogScreen({ nav }) {
       logs: filteredLogs,
     }
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
-    downloadBlob(blob, `zenday-audit-${new Date().toISOString().split('T')[0]}.json`)
+    downloadBlob(blob, `zenday-audit-${todayKey()}.json`)
     toast.addToast('📁 Auditoría exportada', 'success')
   }, [filteredLogs, filter, selectedUser, searchTerm, dateRange, user, toast])
 

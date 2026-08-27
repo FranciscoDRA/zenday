@@ -36,8 +36,8 @@
   /* Text — Light */
   --text-primary:   #1d1d1f;
   --text-secondary: #424245;
-  --text-tertiary:  #86868b;
-  --text-quaternary:#aeaeb2;
+  --text-tertiary:  #6e6e73;
+  --text-quaternary:#8e8e93;
 
   /* Borders */
   --border:         rgba(0,0,0,0.06);
@@ -108,26 +108,30 @@
 /* ─── DARK MODE ─────────────────────────────────────────────────────────────── */
 body.dark {
   --bg-primary:    #0a0a0f;
-  --bg-secondary:  #111118;
-  --bg-tertiary:   #1a1a24;
-  --bg-glass:      rgba(17,17,24,0.80);
-  --card-bg:       #16161f;
+  --bg-secondary:  #12121a;
+  --bg-tertiary:   #1c1c28;
+  --bg-glass:      rgba(18,18,26,0.85);
+  --card-bg:       #161620;
 
-  --text-primary:   #f5f5f7;
-  --text-secondary: #afafb8;
-  --text-tertiary:  #6e6e78;
-  --text-quaternary: #48484e;
+  --text-primary:   #ffffff;
+  --text-secondary: #c9c9d4;
+  --text-tertiary:  #8e8e9d;
+  --text-quaternary: #5c5c6b;
 
-  --border:        rgba(255,255,255,0.05);
-  --border-strong: rgba(255,255,255,0.10);
-  --border-medium: rgba(255,255,255,0.07);
+  --border:        rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --border-medium: rgba(255,255,255,0.08);
 
   --shadow-xs:  0 1px 2px rgba(0,0,0,0.30);
-  --shadow-sm:  0 2px 8px rgba(0,0,0,0.40);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.50);
-  --shadow-lg:  0 8px 32px rgba(0,0,0,0.60);
-  --shadow-xl:  0 20px 48px rgba(0,0,0,0.70);
-  --shadow-2xl: 0 32px 64px rgba(0,0,0,0.80);
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.45);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.55);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.65);
+  --shadow-xl:  0 20px 48px rgba(0,0,0,0.75);
+  --shadow-2xl: 0 32px 64px rgba(0,0,0,0.85);
+  
+  /* Aseguramos que los inputs tengan buen contraste */
+  --input-bg: #1a1a26;
+  --input-border: rgba(255,255,255,0.12);
 }
 
 /* ─── RESET ─────────────────────────────────────────────────────────────────── */
@@ -157,7 +161,7 @@ button, input, select, textarea { font-family: inherit; }
 }
 
 /* ─── SCROLLBAR ─────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
@@ -260,6 +264,10 @@ button, input, select, textarea { font-family: inherit; }
 .win-control--maximize:hover { background: #34d399; color: #064e3b; }
 .win-control--close:hover    { background: #f87171; color: #7f1d1d; }
 
+body.dark .win-control--minimize:hover { background: #fbbf24; color: #1e1a0f; }
+body.dark .win-control--maximize:hover { background: #34d399; color: #0a2e1f; }
+body.dark .win-control--close:hover    { background: #f87171; color: #2d0a0a; }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    SIDEBAR — Premium Apple Nav
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -333,7 +341,7 @@ button, input, select, textarea { font-family: inherit; }
   padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   overflow-y: auto;
 }
 
@@ -370,7 +378,8 @@ button, input, select, textarea { font-family: inherit; }
 }
 
 body.dark .sidebar-item.active {
-  background: linear-gradient(135deg, rgba(99,102,241,0.20) 0%, rgba(139,92,246,0.10) 100%);
+  background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.12) 100%);
+  color: var(--accent-blue);
 }
 
 .sidebar-icon {
@@ -393,6 +402,12 @@ body.dark .sidebar-item.active {
   transition: opacity var(--t-base);
   font-family: var(--font-mono);
 }
+
+body.dark .sidebar-key {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-tertiary);
+}
+
 .sidebar-item:hover .sidebar-key { opacity: 1; }
 
 .active-indicator {
@@ -782,6 +797,9 @@ body.dark .sidebar-item.active {
 .payment-badge.pending { background: rgba(245,158,11,0.15); color: var(--amber); }
 .payment-badge.pending:hover { background: rgba(245,158,11,0.25); transform:scale(1.03); }
 
+body.dark .payment-badge.paid    { background: rgba(16,185,129,0.25); color: #34d399; }
+body.dark .payment-badge.pending { background: rgba(245,158,11,0.25); color: #fbbf24; }
+
 .pay-btn {
   background: linear-gradient(135deg, #10b981, #059669);
   border: none;
@@ -809,6 +827,10 @@ body.dark .sidebar-item.active {
   padding: 3px 10px;
   border-radius: var(--radius-full);
   font-weight: 600;
+}
+
+body.dark .recurring-badge {
+  background: rgba(139,92,246,0.20);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -960,6 +982,8 @@ body.dark .sidebar-item.active {
 .month-cell.other-month { opacity: .45; }
 .month-cell.weekend { background: repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(0,0,0,0.012) 12px, rgba(0,0,0,0.012) 13px); }
 .month-cell.today { background: rgba(99,102,241,0.04); }
+
+body.dark .month-cell.weekend { background: repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(255,255,255,0.02) 12px, rgba(255,255,255,0.02) 13px); }
 
 .month-cell-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
 
@@ -1196,6 +1220,8 @@ body.dark .sidebar-item.active {
 .client-filter-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
 .client-filter-btn.active { background: rgba(99,102,241,0.10); border-color: var(--accent-blue); color: var(--accent-blue); }
 
+body.dark .client-filter-btn.active { background: rgba(99,102,241,0.20); }
+
 .client-filter-dropdown {
   position: absolute;
   top: calc(100% + 8px);
@@ -1330,6 +1356,8 @@ body.dark .sidebar-item.active {
   font-weight: 700;
 }
 
+body.dark .patient-stats { background: rgba(16,185,129,0.20); }
+
 .icon-btn {
   background: none;
   border: none;
@@ -1361,8 +1389,13 @@ body.dark .sidebar-item.active {
 .patient-info-premium h4 { font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:3px; letter-spacing:-0.01em; }
 .patient-meta { display:flex; gap:16px; font-size:12px; color:var(--text-tertiary); }
 .patient-badge { padding:5px 10px; background:var(--bg-tertiary); border-radius:var(--radius-full); font-size:12px; font-weight:600; color:var(--text-secondary); }
-.patient-actions-premium { display:flex; gap:4px; opacity:0; transition:opacity var(--t-base); }
-.patient-card-premium:hover .patient-actions-premium { opacity:1; }
+/* Editar y eliminar arrancan tenues pero VISIBLES. Con opacity:0 sólo aparecían
+   al pasar el mouse: en pantalla táctil no existe hover, y con teclado se
+   enfocaba un botón invisible. Mismo problema que tenía .delete-note. */
+.patient-actions-premium { display:flex; gap:4px; opacity:0.55; transition:opacity var(--t-base); }
+.patient-card-premium:hover .patient-actions-premium,
+.patient-actions-premium:hover,
+.patient-actions-premium:focus-within { opacity:1; }
 .btn-icon-sm { width:30px; height:30px; border:none; background:transparent; border-radius:var(--radius-sm); color:var(--text-tertiary); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; transition:all var(--t-fast); }
 .btn-icon-sm:hover { background:var(--bg-tertiary); color:var(--text-primary); }
 .btn-icon-sm.danger:hover { background:rgba(244,63,94,0.10); color:var(--rose); }
@@ -1754,6 +1787,15 @@ body.dark .sidebar-item.active {
 .toggle-switch input:checked + .toggle-slider::before,
 .toggle-premium input:checked + .toggle-slider-premium::before { transform: translateY(-50%) translateX(22px); }
 
+/* El input real está oculto (opacity:0) porque el interruptor visible es el
+   slider — eso está bien. Lo que faltaba era el anillo de foco: con Tab se
+   llegaba al interruptor y nada en pantalla lo indicaba. */
+.toggle-switch input:focus-visible + .toggle-slider,
+.toggle-premium input:focus-visible + .toggle-slider-premium {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 3px;
+}
+
 /* Theme picker */
 .theme-picker { display:flex; gap:12px; flex-wrap:wrap; }
 .theme-dot, .color-option {
@@ -1783,6 +1825,7 @@ body.dark .sidebar-item.active {
   border-color:var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(99,102,241,0.12), var(--shadow-md);
 }
+body.dark .mode-option.active { background: rgba(99,102,241,0.15); }
 .mode-icon { font-size:36px; }
 .mode-label { font-size:18px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; }
 .mode-description { font-size:13px; color:var(--text-tertiary); margin-top:2px; }
@@ -2273,14 +2316,17 @@ body.dark .sidebar-item.active {
   flex: 1;
 }
  
-/* Acciones: visibles via CSS hover */
+/* Acciones: tenues en reposo, plenas al enfocar o pasar el mouse.
+   Antes eran opacity:0 y sólo el hover las mostraba — invisibles en táctil. */
 .product-actions {
   display: flex;
   gap: 4px;
-  opacity: 0;
+  opacity: 0.55;
   transition: opacity var(--t-base);
 }
-.product-card-premium:hover .product-actions { opacity: 1; }
+.product-card-premium:hover .product-actions,
+.product-actions:hover,
+.product-actions:focus-within { opacity: 1; }
  
 .btn-icon-sm {
   width: 30px;
@@ -2805,8 +2851,6 @@ body.dark .sidebar-item.active {
    NOTIFICATIONS
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-
-
 .notification-bell {
   position: relative;
   width: 40px;
@@ -2883,6 +2927,8 @@ body.dark .sidebar-item.active {
 }
 .notification-item:hover { background:var(--bg-tertiary); }
 .notification-item.unread { background:rgba(99,102,241,0.06); border-left:3px solid var(--accent-blue); }
+
+body.dark .notification-item.unread { background: rgba(99,102,241,0.15); }
 
 .notification-icon { font-size:20px; flex-shrink:0; }
 .notification-title { font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:2px; }
@@ -3213,12 +3259,6 @@ body.dark .sidebar-item.active {
 .month-appointment-paid { font-size:11px; margin-left:3px; }
 .weekend-indicator { width:14px; height:14px; background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--border-strong) 4px,var(--border-strong) 5px); border-radius:3px; }
 
-/* Dark mode months */
-body.dark .month-cell.weekend { background: repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(255,255,255,0.02) 12px, rgba(255,255,255,0.02) 13px); }
-
-/* Dark mode notification unread */
-body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
-
 /* ═══════════════════════════════════════════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -3372,6 +3412,8 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   color: var(--accent-blue);
   font-weight: 700;
 }
+
+body.dark .settings-nav-item.active { background: rgba(99, 102, 241, 0.25); }
 
 .settings-nav-item .nav-icon {
   font-size: 16px;
@@ -4395,6 +4437,8 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
 
 .stat-card {
   display: flex;
+  /* Mismo caso que .kpi-card: un bloque anterior deja flex-direction:column. */
+  flex-direction: row;
   align-items: center;
   gap: 16px;
   padding: 20px 22px;
@@ -5174,6 +5218,35 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   gap: 10px;
 }
 
+/* La cabecera de notas no tenía ninguna regla: con el botón de selección
+   al lado del título quedaban apilados. Los botones van a la derecha y
+   bajan solos si no entran. */
+/* Una nota sin texto se renderizaba como una fila vacía: se veía como un
+   error de la app. Se muestra el motivo, atenuado y en cursiva. */
+.note-vacia { color: var(--text-tertiary); font-style: italic; }
+.note-heredada {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.notes-header h3 { margin: 0; }
+
+/* En modo selección el checkbox se alinea con la primera línea del texto,
+   no con el centro del bloque. */
+.note-item input[type="checkbox"] { margin-top: 3px; accent-color: var(--rose); }
+
 .note-item {
   display: flex;
   align-items: flex-start;
@@ -5219,12 +5292,17 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   justify-content: center;
   transition: all var(--t-fast);
   flex-shrink: 0;
-  opacity: 0;
+  /* Antes esto era opacity: 0 y sólo aparecía con :hover sobre la nota.
+     El botón existía y funcionaba, pero nadie lo encontraba — "no puedo
+     eliminar notas". En una pantalla táctil no hay hover, así que era
+     directamente inalcanzable. Ahora se ve siempre, atenuado. */
+  opacity: 0.5;
   color: var(--rose);
 }
 
-.note-item:hover .delete-note { opacity: 1; }
-.delete-note:hover { background: rgba(244, 63, 94, 0.10); }
+.note-item:hover .delete-note,
+.delete-note:focus-visible { opacity: 1; }
+.delete-note:hover { background: rgba(244, 63, 94, 0.10); opacity: 1; }
 
 .no-notes {
   display: flex;
@@ -5359,15 +5437,19 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   font-weight: 500;
 }
 
+/* Ver / descargar / borrar un documento clínico. Estaban en opacity:0 y sólo
+   se veían con el mouse encima de la fila. */
 .document-actions {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 0.55;
   transition: opacity var(--t-base);
 }
 
-.document-item:hover .document-actions { opacity: 1; }
+.document-item:hover .document-actions,
+.document-actions:hover,
+.document-actions:focus-within { opacity: 1; }
 
 .view-btn, .download-btn, .delete-btn {
   width: 34px;
@@ -5504,17 +5586,24 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   letter-spacing: -0.03em;
 }
 
+/* La regla estaba escrita pensando sólo en modo oscuro: blanco al 10% sobre
+   fondo blanco (--bg-secondary) hacía el botón de cerrar INVISIBLE en modo
+   claro, que es el modo por defecto. Y la variante .dark lo bajaba a 0.05,
+   todavía más tenue. Se usa el token de superficie, que ya se adapta solo. */
 .sheet-close {
-  width: 30px; height: 30px;
+  width: 34px; height: 34px;
   border-radius: 50%;
-  background: var(--bg-hover, rgba(0,0,0,0.08));
+  background: var(--bg-tertiary);
   border: none;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary);
-  transition: background 0.15s;
+  transition: background var(--t-base, 0.15s), color var(--t-base, 0.15s);
 }
-.sheet-close:hover { background: var(--bg-active, rgba(0,0,0,0.15)); }
+.sheet-close:hover {
+  background: var(--border-strong);
+  color: var(--text-primary);
+}
 
 .new-reminder-btn {
   display: flex; align-items: center; gap: 6px;
@@ -5628,6 +5717,10 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
 .priority-badge.high   { background: rgba(239,68,68,0.12);  color: #ef4444; }
 .priority-badge.normal { background: rgba(234,179,8,0.12);  color: #ca8a04; }
 .priority-badge.low    { background: rgba(34,197,94,0.12);  color: #16a34a; }
+
+body.dark .priority-badge.high   { background: rgba(239,68,68,0.25); color: #f87171; }
+body.dark .priority-badge.normal { background: rgba(234,179,8,0.25); color: #fbbf24; }
+body.dark .priority-badge.low    { background: rgba(34,197,94,0.25); color: #4ade80; }
 
 .card-message {
   font-size: 12px;
@@ -6672,6 +6765,7 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
 .pedido-card:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+   
   border-color: var(--border-medium);
   border-left-color: inherit;
 }
@@ -6701,6 +6795,8 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   letter-spacing: -0.01em;
 }
 
+/* Borrar un pedido del kanban. Estaba en opacity:0: en una tablet no había
+   forma de llegar a él, y con Tab se enfocaba un botón que no se veía. */
 .btn-eliminar {
   background: none;
   border: none;
@@ -6709,16 +6805,18 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   transition: all var(--t-fast);
-  opacity: 0;
+  opacity: 0.55;
   color: var(--rose);
 }
 
-.pedido-card:hover .btn-eliminar {
+.pedido-card:hover .btn-eliminar,
+.btn-eliminar:focus-visible {
   opacity: 1;
 }
 
 .btn-eliminar:hover {
   background: rgba(244, 63, 94, 0.12);
+  opacity: 1;
 }
 
 .card-articulo {
@@ -7224,15 +7322,18 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   flex-shrink: 0;
 }
 
+/* Editar / eliminar un gasto: tenues, no invisibles. */
 .expense-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 0.55;
   transition: opacity var(--t-base);
 }
 
-.expense-card:hover .expense-actions {
+.expense-card:hover .expense-actions,
+.expense-actions:hover,
+.expense-actions:focus-within {
   opacity: 1;
 }
 
@@ -7458,6 +7559,10 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   border-radius: var(--radius-xl);
   padding: 20px;
   display: flex;
+  /* FIX: un bloque anterior declara flex-direction:column y, al tener la
+     misma especificidad, esa propiedad sobrevivía acá. El markup es
+     ícono + contenido, pensado para fila: renderizaba apilado y centrado. */
+  flex-direction: row;
   align-items: center;
   gap: 14px;
   box-shadow: var(--shadow-xs);
@@ -7897,4 +8002,1002 @@ body.dark .notification-item.unread { background: rgba(99,102,241,0.10); }
   font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+/* Mostrar texto en desktop */
+@media (min-width: 769px) {
+  .step-text {
+    display: inline-block;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FORCE DARK MODE LEGIBILITY - AGENDA
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Forzar que el modo oscuro se aplique correctamente */
+body.dark,
+body.dark .app,
+body.dark .main-content,
+body.dark .agenda-screen,
+body.dark .month-view,
+body.dark .week-view,
+body.dark .timegrid {
+  color-scheme: dark;
+}
+
+/* === TEXTO PRINCIPAL EN MODO OSCURO === */
+body.dark,
+body.dark * {
+  color-scheme: dark;
+}
+
+/* Colores de texto de la agenda en modo oscuro.
+   ANTES esto era `body.dark .agenda-screen *` con !important, o sea TODOS los
+   descendientes. Efecto colateral: aplanaba toda la jerarquía visual — el chip
+   de precio pagado (verde) y el pendiente (ámbar) salían los dos blancos e
+   indistinguibles, la leyenda 💰/⏳/💬 perdía sus tres colores, el ícono de
+   WhatsApp perdía el #25D366 y las fechas secundarias se forzaban a primary.
+   Ahora sólo se corrigen los elementos estructurales que realmente lo necesitan. */
+body.dark .agenda-screen,
+body.dark .month-cell,
+body.dark .week-cell,
+body.dark .hour-slot,
+body.dark .hour-label,
+body.dark .month-day-number,
+body.dark .week-day-number,
+body.dark .week-day-name,
+body.dark .current-date,
+body.dark .month-header-cell {
+  color: var(--text-primary);
+}
+
+/* Fondo de las celdas */
+body.dark .month-cell,
+body.dark .week-cell {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+/* Celdas de otros meses */
+body.dark .month-cell.other-month,
+body.dark .month-cell.other-month * {
+  opacity: 0.6;
+  color: var(--text-tertiary) !important;
+}
+
+/* Día actual (hoy) */
+body.dark .month-cell.today {
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+body.dark .month-cell.today .month-day-number {
+  background: var(--accent-blue) !important;
+  color: white !important;
+}
+
+/* Texto de las horas */
+body.dark .hour-label,
+body.dark .week-hour-label {
+  color: var(--text-primary) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+/* Citas en el calendario */
+body.dark .month-appointment,
+body.dark .week-appointment {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--text-primary) !important;
+}
+
+body.dark .month-appointment:hover,
+body.dark .week-appointment:hover {
+  background: var(--accent-blue) !important;
+  color: white !important;
+}
+
+/* Badges de estado */
+body.dark .status-badge {
+  color: white !important;
+}
+
+/* Precios */
+body.dark .price,
+body.dark .product-price-premium {
+  color: var(--emerald) !important;
+}
+
+/* Bordes */
+body.dark .month-cell,
+body.dark .week-cell,
+body.dark .hour-slot,
+body.dark .month-header-cell {
+  border-color: var(--border) !important;
+}
+
+/* Inputs y selects */
+body.dark input,
+body.dark select,
+body.dark textarea,
+body.dark .search-input-wrapper input,
+body.dark .setting-input-premium {
+  color: var(--text-primary) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+body.dark input::placeholder,
+body.dark textarea::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* Asegurar que el texto en botones sea visible */
+body.dark button:not(.win-control):not(.sidebar-toggle):not(.sidebar-item) {
+  color: inherit;
+}
+
+body.dark .btn-secondary,
+body.dark .secondary-btn {
+  color: var(--text-primary) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ZENDAY — TOPBAR PREMIUM REDESIGN
+   Pegar al final de App.css
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── TOPBAR PRINCIPAL ───────────────────────────────────────────────────────── */
+
+.window-controls {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  height: 44px !important;
+  padding: 0 10px !important;
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border) !important;
+  -webkit-app-region: drag !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: var(--z-sticky) !important;
+  gap: 10px !important;
+}
+
+/* Título de la app en el topbar */
+.window-title {
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-app-region: no-drag !important;
+  user-select: none !important;
+  flex: 1 !important;
+}
+
+/* ─── PILL GROUP — ACCIONES ──────────────────────────────────────────────────── */
+
+/* Contenedor tipo píldora que agrupa los botones de acción */
+.topbar-actions,
+.window-controls > div:not(.window-controls__group):first-child {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-full) !important;
+  padding: 3px !important;
+  -webkit-app-region: no-drag !important;
+}
+
+/* ─── BOTONES DE ACCIÓN EN TOPBAR ────────────────────────────────────────────── */
+
+.notification-bell,
+.reminder-button-apple,
+.backup-button {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: var(--radius-full) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  position: relative !important;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast) !important;
+  color: var(--text-secondary) !important;
+  font-size: 14px !important;
+  padding: 0 !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.notification-bell:hover,
+.reminder-button-apple:hover,
+.backup-button:hover {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  transform: scale(1.05) !important;
+}
+
+.notification-bell:active,
+.reminder-button-apple:active,
+.backup-button:active {
+  transform: scale(0.94) !important;
+}
+
+/* SVGs dentro de los botones — tamaño controlado */
+.notification-bell svg,
+.reminder-button-apple svg,
+.backup-button svg {
+  width: 15px !important;
+  height: 15px !important;
+  stroke-width: 1.8 !important;
+  pointer-events: none !important;
+}
+
+/* Divisores entre botones */
+.topbar-divider {
+  width: 1px !important;
+  height: 16px !important;
+  background: var(--border-strong) !important;
+  border-radius: 1px !important;
+  flex-shrink: 0 !important;
+  margin: 0 1px !important;
+  opacity: 0.6 !important;
+}
+
+/* ─── BADGES — COMPACTOS Y ELEGANTES ─────────────────────────────────────────── */
+
+.notification-badge,
+.reminder-badge,
+.reminder-badge-apple {
+  position: absolute !important;
+  top: 1px !important;
+  right: 0px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  background: var(--rose) !important;
+  color: white !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  border-radius: 7px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 3px !important;
+  border: 1.5px solid var(--bg-secondary) !important;
+  animation: none !important;           /* ← quita el pulse agresivo */
+  letter-spacing: -0.02em !important;
+  font-family: var(--font-body) !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+}
+
+/* Badge de punto (sin número) — más sutil */
+.notification-badge.dot {
+  min-width: 7px !important;
+  height: 7px !important;
+  padding: 0 !important;
+  top: 4px !important;
+  right: 4px !important;
+  font-size: 0 !important;
+  border-radius: 50% !important;
+}
+
+/* Pulso suave solo cuando hay items urgentes */
+.notification-badge.urgent,
+.reminder-badge.urgent {
+  animation: badgePulseSubtle 3s ease-in-out infinite !important;
+}
+
+@keyframes badgePulseSubtle {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
+  50%       { box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.18); }
+}
+
+/* ─── WINDOW CONTROLS — GROUP ────────────────────────────────────────────────── */
+
+.window-controls__group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-full) !important;
+  padding: 3px !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.win-control {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: var(--radius-full) !important;
+  border: none !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  color: var(--text-tertiary) !important;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast) !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.win-control svg {
+  width: 12px !important;
+  height: 12px !important;
+  stroke-width: 2 !important;
+  pointer-events: none !important;
+}
+
+.win-control:hover {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  transform: scale(1.08) !important;
+}
+
+.win-control:active { transform: scale(0.93) !important; }
+
+.win-control--minimize:hover { background: #fbbf24 !important; color: #78350f !important; }
+.win-control--maximize:hover { background: #34d399 !important; color: #064e3b !important; }
+.win-control--close:hover    { background: #f87171 !important; color: #7f1d1d !important; }
+
+body.dark .win-control--minimize:hover { background: #fbbf24 !important; color: #1a1200 !important; }
+body.dark .win-control--maximize:hover { background: #34d399 !important; color: #002a1a !important; }
+body.dark .win-control--close:hover    { background: #f87171 !important; color: #2d0000 !important; }
+
+/* ─── DARK MODE ──────────────────────────────────────────────────────────────── */
+
+body.dark .window-controls__group,
+body.dark .topbar-actions {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark .win-control:hover,
+body.dark .notification-bell:hover,
+body.dark .reminder-button-apple:hover,
+body.dark .backup-button:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+}
+
+body.dark .notification-badge,
+body.dark .reminder-badge,
+body.dark .reminder-badge-apple {
+  border-color: var(--bg-secondary) !important;
+}
+
+/* ─── TOOLTIP nativo mejorado ────────────────────────────────────────────────── */
+
+.notification-bell[title],
+.reminder-button-apple[title],
+.backup-button[title] {
+  position: relative !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FOCO VISIBLE
+   No había ninguna regla :focus-visible en todo el archivo y sí 23 `outline:
+   none`, así que navegar con Tab no producía ningún cambio visual. El peor caso
+   era .patient-card-premium:focus, que además reseteaba el borde al valor de
+   reposo. :focus-visible sólo se activa con teclado, así que el click con mouse
+   sigue viéndose igual que antes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:where(button, a, input, select, textarea, [tabindex], [role="button"]):focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs, 6px);
+}
+
+.patient-card-premium:focus-visible,
+.product-card:focus-visible,
+.appointment-card:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+  border-color: var(--accent-blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESQUELETO DE CARGA
+
+   Antes, mientras los datos venían en camino, las pantallas se dibujaban con
+   los arrays vacíos: "$0" en los tres KPI del Panel, "↓ 0% vs anterior" y
+   "No hay consultas para hoy". Medio segundo después aparecían los números
+   reales. O sea que el programa le decía al usuario que su negocio no había
+   facturado nada, y despues se corregia solo. Cada vez que lo abria.
+
+   Un esqueleto con la MISMA forma que la pantalla dice la verdad ("esto
+   todavia no esta listo") y ademas evita que al llegar los datos salte todo
+   de lugar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cargando-pantalla { padding: 24px; }
+
+.cargando-fila {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; margin-bottom: 24px;
+}
+
+.cargando-kpis {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 16px; margin-bottom: 24px;
+}
+
+.cargando-kpi {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 20px; border-radius: var(--radius-lg);
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+
+.cargando-lista { display: flex; flex-direction: column; gap: 10px; }
+
+.cargando-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: var(--radius-lg);
+  background: var(--bg-secondary); border: 1px solid var(--border);
+}
+
+.cargando-item-texto { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+.cargando-circulo { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; }
+
+/* El bloque gris que se mueve. El brillo va de izquierda a derecha: sin el
+   movimiento parece un error de render, con el movimiento se lee como espera. */
+.cargando-bloque {
+  display: block;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: cargandoBrillo 1.4s ease-in-out infinite;
+}
+
+body.dark .cargando-bloque {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+}
+
+@keyframes cargandoBrillo {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Hay gente a la que el movimiento le marea, y Windows tiene una opcion para
+   pedir que se reduzca. Sin animacion el esqueleto se sigue entendiendo. */
+@media (prefers-reduced-motion: reduce) {
+  .cargando-bloque { animation: none; background-image: none; }
+}
+
+@media (max-width: 768px) {
+  .cargando-kpis { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AVISO DE ERROR
+
+   Aparece cuando algo revienta sin que nadie lo atrape. Antes, esos errores se
+   escribian en un archivo de log y la pantalla no mostraba nada: el usuario
+   apretaba "Guardar" y no pasaba nada, sin ninguna pista.
+
+   Va fijo abajo a la derecha, encima de todo. No tapa la barra lateral ni el
+   contenido, y no bloquea: se puede seguir usando la app con el cartel puesto.
+   Es un aviso, no un modal — el error ya pasó, frenar al usuario no lo arregla.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.aviso-error {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  /* Los toasts estan en --z-toast: 3000. Este cartel tiene que quedar
+     ARRIBA: si un error dispara ademas un toast, el que hay que ver es
+     este, que es el que se puede copiar. Se calcula del token para que
+     siga siendo cierto si alguien cambia la escala. */
+  z-index: calc(var(--z-toast) + 10);
+  max-width: min(460px, calc(100vw - 40px));
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--rose);
+  border-left: 4px solid var(--rose);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  animation: avisoErrorEntra 0.22s ease-out;
+}
+
+@keyframes avisoErrorEntra {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aviso-error { animation: none; }
+}
+
+.aviso-error-icono { font-size: 18px; line-height: 1.2; flex-shrink: 0; }
+
+.aviso-error-texto {
+  flex: 1;
+  min-width: 0;           /* sin esto el mensaje largo estira la tarjeta */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aviso-error-texto strong { font-size: 13px; color: var(--text-primary); }
+
+/* El mensaje tecnico: chico, gris, y CORTADO. Un stack de React puede tener
+   cientos de caracteres y no puede empujar el boton de copiar fuera de la
+   pantalla, que es justo el que hace falta apretar. */
+.aviso-error-detalle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.aviso-error-copiar {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--t-fast);
+}
+
+.aviso-error-copiar:hover { background: var(--bg-tertiary); }
+.aviso-error-copiar:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+.aviso-error-cerrar {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.aviso-error-cerrar:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.aviso-error-cerrar:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+@media (max-width: 768px) {
+  .aviso-error { left: 12px; right: 12px; bottom: 12px; max-width: none; flex-wrap: wrap; }
+  .aviso-error-copiar { width: 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CIERRE DEL DIA
+
+   Contesta la pregunta de las ocho de la noche: cuanto entro hoy, por que via,
+   y cuanta plata tiene que haber en el cajon. El resto de Finanzas contesta
+   "como viene el mes", que es otra cosa y se mira una vez cada tanto.
+
+   Por eso va primero y por eso el numero de la caja esta destacado: es el unico
+   que se compara contra algo fisico.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cierre-dia {
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.cierre-dia-encabezado {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+}
+
+.cierre-dia-encabezado h3 { margin: 0 0 2px; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.cierre-dia-fecha { font-size: 12px; color: var(--text-tertiary); text-transform: capitalize; }
+
+.cierre-dia-total { text-align: right; }
+.cierre-dia-monto {
+  display: block; font-size: 22px; font-weight: 800;
+  color: var(--accent-green); letter-spacing: -0.02em;
+}
+.cierre-dia-cuenta { font-size: 11px; color: var(--text-tertiary); }
+
+.cierre-dia-vacio { margin: 0; font-size: 13px; color: var(--text-tertiary); font-style: italic; }
+
+.cierre-dia-medios { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
+
+.cierre-dia-medio {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+}
+.cierre-dia-medio:nth-child(odd) { background: var(--bg-primary); }
+
+.cierre-dia-icono { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.cierre-dia-label { flex: 1; font-size: 13px; color: var(--text-secondary); }
+
+/* La cantidad de cobros, en una pastilla chica: es contexto, no protagonista. */
+.cierre-dia-cant {
+  font-size: 11px; color: var(--text-tertiary);
+  background: var(--bg-tertiary); border-radius: var(--radius-full);
+  padding: 1px 8px; min-width: 24px; text-align: center;
+}
+
+/* Tabular para que las cifras queden alineadas en columna: si no, con montos de
+   distinto largo el ojo no puede compararlos de un vistazo. */
+.cierre-dia-valor {
+  font-size: 13px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  min-width: 92px; text-align: right;
+}
+
+.cierre-dia-caja {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-size: 13px; color: var(--text-primary);
+}
+
+.cierre-dia-caja strong {
+  font-size: 17px; font-weight: 800;
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .cierre-dia-total { text-align: left; }
+  .cierre-dia-valor { min-width: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMO TE PAGARON  (el desglose del PERIODO, no del dia)
+
+   El cierre de arriba es de hoy y sirve para contar el cajon. Esto es el mismo
+   dato del mes o el año que se este mirando, y sirve para entender el negocio.
+
+   La barra existe por una razon concreta: una lista de numeros no muestra la
+   dependencia de una sola via de cobro, y una barra si. Se ve de un vistazo si
+   el 80% entra por transferencia — que es un dato distinto de "cuanto entro".
+
+   Nota de accesibilidad: el porcentaje esta escrito ADEMAS de la barra. El
+   color y el largo no pueden ser el unico portador de la informacion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.desglose-medios {
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.desglose-medios-titulo {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.desglose-medios-titulo h3 {
+  margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary);
+}
+.desglose-medios-periodo {
+  font-size: 12px; color: var(--text-tertiary); text-transform: capitalize;
+}
+
+.desglose-medios-lista { display: flex; flex-direction: column; gap: 10px; }
+
+.desglose-medio-fila {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+}
+.desglose-medio-icono { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.desglose-medio-label { flex: 1; font-size: 13px; color: var(--text-secondary); }
+
+.desglose-medio-cant {
+  font-size: 11px; color: var(--text-tertiary);
+  background: var(--bg-tertiary); border-radius: var(--radius-full);
+  padding: 1px 8px; text-align: center;
+}
+
+.desglose-medio-pct {
+  font-size: 11px; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px; text-align: right;
+}
+
+.desglose-medio-monto {
+  font-size: 13px; color: var(--text-primary); font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 92px; text-align: right;
+}
+
+.desglose-medio-barra {
+  height: 6px; border-radius: var(--radius-full);
+  background: var(--bg-tertiary); overflow: hidden;
+}
+.desglose-medio-relleno {
+  height: 100%; border-radius: var(--radius-full);
+  background: var(--accent-green);
+  transition: width 0.3s ease;
+}
+/* Lo que no tiene medio anotado no se pinta como si fuera plata entendida. */
+.desglose-medio-relleno.es-incognita {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--text-tertiary) 0 4px,
+    transparent 4px 8px
+  );
+  opacity: 0.55;
+}
+
+.desglose-medios-pie {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 14px; padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-size: 13px; color: var(--text-primary);
+}
+.desglose-medios-pie strong {
+  font-size: 15px; font-weight: 800; color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+
+.desglose-medios-aviso {
+  margin: 12px 0 0; padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  font-size: 12px; line-height: 1.5; color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .desglose-medio-cant { display: none; }
+  .desglose-medio-monto { min-width: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALERTAS
+
+   La unica pantalla de la app que habla primero. Por eso el diseño tiene una
+   regla que las otras no: EL PORQUE SIEMPRE VISIBLE. El renglon gris debajo del
+   nombre ("Venia cada 21 dias, 11 visitas, hace 45 que no aparece") no es
+   decoracion: es lo que permite verificar la afirmacion en dos segundos. Una
+   alerta que no se puede verificar se ignora a la tercera vez.
+
+   El color diferencia gravedad, pero NUNCA es el unico portador: cada tarjeta
+   dice "Se fue" o "Se atrasa" con todas las letras.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.alertas-resumen {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 18px 20px; margin-bottom: 24px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(245,158,11,0.10), rgba(239,68,68,0.06));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.alertas-resumen-label { font-size: 12px; color: var(--text-secondary); }
+.alertas-resumen-monto {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--accent-orange, #f59e0b);
+  font-variant-numeric: tabular-nums;
+}
+.alertas-resumen-detalle { font-size: 12px; color: var(--text-tertiary); }
+
+.alertas-seccion { margin-bottom: 28px; }
+
+.alertas-seccion-titulo {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text-primary);
+}
+.alertas-seccion-cant {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  background: var(--bg-tertiary); border-radius: var(--radius-full);
+  padding: 1px 9px;
+}
+.alertas-seccion-ayuda {
+  margin: 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--text-tertiary);
+}
+
+.alertas-lista { display: flex; flex-direction: column; gap: 12px; }
+
+.alertas-tarjeta {
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-tertiary);
+}
+.alertas-tarjeta.nivel-atrasado { border-left-color: #f59e0b; }
+.alertas-tarjeta.nivel-perdido  { border-left-color: #ef4444; }
+.alertas-tarjeta.nivel-falta    { border-left-color: #8b5cf6; }
+
+.alertas-tarjeta-cabecera {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.alertas-tarjeta-nombre {
+  margin: 0 0 3px; font-size: 15px; font-weight: 700; color: var(--text-primary);
+}
+.alertas-tarjeta-porque {
+  margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-tertiary);
+}
+
+.alertas-chip {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: var(--radius-full);
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.alertas-chip.nivel-atrasado { background: rgba(245,158,11,0.15); color: #b45309; }
+.alertas-chip.nivel-perdido  { background: rgba(239,68,68,0.15);  color: #b91c1c; }
+.alertas-chip.nivel-falta    { background: rgba(139,92,246,0.15); color: #6d28d9; }
+
+.alertas-tarjeta-datos {
+  display: flex; flex-wrap: wrap; gap: 20px;
+  padding: 12px 0; margin-bottom: 12px;
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
+}
+.alertas-dato { display: flex; flex-direction: column; gap: 1px; }
+.alertas-dato-label { font-size: 11px; color: var(--text-tertiary); }
+.alertas-dato strong {
+  font-size: 14px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.alertas-dato.es-plata strong { color: var(--accent-red, #ef4444); font-weight: 800; }
+
+.alertas-tarjeta-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.alertas-btn {
+  padding: 7px 14px; border-radius: var(--radius-full);
+  border: 1px solid var(--border); background: var(--bg-primary);
+  color: var(--text-primary); font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.alertas-btn:hover { background: var(--bg-tertiary); }
+.alertas-btn:focus-visible { outline: 2px solid var(--accent-blue, #3b82f6); outline-offset: 2px; }
+
+.alertas-btn.es-whatsapp {
+  border-color: rgba(37, 211, 102, 0.45);
+  background: rgba(37, 211, 102, 0.10);
+  color: #128c3f;
+}
+.alertas-btn.es-whatsapp:hover { background: rgba(37, 211, 102, 0.18); }
+
+.alertas-btn.es-suave { background: transparent; color: var(--text-secondary); }
+
+.alertas-pie {
+  margin: 4px 0 0; padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  font-size: 11px; line-height: 1.55; color: var(--text-tertiary);
+}
+
+/* El vacio explica POR QUE esta vacio. "No hay alertas" en un negocio recien
+   empezado es una mentira tranquilizadora: no es que este todo bien, es que
+   todavia no hay con que comparar. */
+.alertas-vacio {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 8px;
+  padding: 56px 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+}
+.alertas-vacio-icono { font-size: 40px; line-height: 1; margin-bottom: 4px; }
+.alertas-vacio h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.alertas-vacio p {
+  margin: 0; max-width: 460px;
+  font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+}
+.alertas-vacio-nota { color: var(--text-tertiary) !important; font-size: 12px !important; }
+
+@media (max-width: 768px) {
+  .alertas-resumen-monto { font-size: 24px; }
+  .alertas-tarjeta-datos { gap: 14px; }
+  .alertas-btn { flex: 1; text-align: center; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALTA RAPIDA  (Ctrl+K)
+
+   La tarjeta que aparece cuando lo escrito se entiende como un turno nuevo.
+   Va ARRIBA de los resultados de busqueda y se muestra aunque no haya ninguno:
+   escribir el nombre de un cliente que existe mas una fecha no encuentra nada
+   que buscar, y es justo el caso en que se quiere dar de alta.
+
+   Se distingue del resto con el borde de acento a la izquierda: buscar y crear
+   son dos cosas distintas y el ojo tiene que separarlas sin leer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.alta-rapida {
+  /* En flujo normal, como primer hijo del desplegable. Antes era absolute con
+     top:100%, igual que .search-results, y las dos cajas se superponian. */
+  display: flex;
+  margin: 6px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-blue);
+  border-left: 4px solid var(--accent-blue);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  transition: background var(--t-fast);
+}
+
+.alta-rapida:hover        { background: var(--bg-secondary); }
+.alta-rapida:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+.alta-rapida-icono { font-size: 18px; flex-shrink: 0; }
+
+.alta-rapida-texto {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+.alta-rapida-texto strong { font-size: 14px; color: var(--text-primary); }
+
+.alta-rapida-cuando {
+  font-size: 12px; color: var(--text-secondary);
+  text-transform: capitalize;   /* "jueves 3 de setiembre", no "Jueves..." */
+}
+
+.alta-rapida-item { font-size: 12px; color: var(--text-tertiary); }
+
+/* Lo que no se entendio, en ambar: no es un error, es un aviso de que ese
+   campo se completa a mano. Rojo asustaria sin motivo. */
+.alta-rapida-faltan { font-size: 11px; color: var(--accent-amber); }
+
+/* La tecla, para que se descubra sola: quien lo ve una vez ya no vuelve a
+   usar el mouse. */
+.alta-rapida-enter {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 2px 7px;
+  background: var(--bg-secondary);
+}
+
+@media (max-width: 768px) {
+  .alta-rapida-enter { display: none; }   /* sin teclado no significa nada */
 }

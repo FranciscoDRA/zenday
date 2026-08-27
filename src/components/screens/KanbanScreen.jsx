@@ -50,7 +50,9 @@ export function KanbanScreen({ nav, patients, updatePatient }) {
     
     if (patient.kanbanStatus !== columnId) {
       console.log('🔄 Actualizando a:', columnId)
-      updatePatient(patient.id, { ...patient, kanbanStatus: columnId })
+      // FIX: si el cliente no se encuentra, la tarjeta volvía sola a su columna
+      // sin explicación. updatePatient ahora avisa por toast.
+      if (updatePatient(patient.id, { ...patient, kanbanStatus: columnId }) === false) return
     } else {
       console.log('⏭️ Ya está en esta columna')
     }

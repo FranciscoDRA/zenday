@@ -1,8 +1,32 @@
 // src/components/common/GlobalSearch.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { interpretar, describir, aInicio } from '../../utils/altaRapida'
 import { formatDateTime, formatCurrency } from '../../utils/helpers'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
+//
+// Estos valores por defecto TIENEN que vivir acá afuera, no en la firma de la
+// función.
+//
+// Un `orders = []` escrito en los parámetros parece constante, pero se evalúa
+// en CADA render: devuelve un array nuevo cada vez. Mientras eso no estaba en
+// ninguna lista de dependencias no molestaba. Cuando agregué `orders` a las
+// deps del efecto de búsqueda, se volvió un bucle infinito:
+//
+//   render → orders es un [] nuevo → cambian las deps → corre el efecto →
+//   setResults([]) → cambia el estado → render → ...
+//
+// Y App.jsx no pasa `orders`, así que siempre cae en el default. Por eso el
+// error salía apenas abría la app, sin tocar nada.
+const SIN_DATOS = Object.freeze([])
+const NO_OP = () => {}
+const RUTAS_POR_DEFECTO = Object.freeze({
+  order:       'orderDetail',
+  patient:     'patientProfile',
+  product:     'productDetail',
+  appointment: 'appointmentDetail',
+})
+
 const STATUS_LABELS_ES = {
   pending: 'pendiente', 
   delivered: 'entregado', 
@@ -118,21 +142,16 @@ function getRelativeDateTime(dateStr) {
 }
 
 // ─── COMPONENTE ───────────────────────────────────────────────────────────────
-export function GlobalSearch({ 
-  appointments = [],
-  patients = [],
-  products = [],
-  orders = [],
-  onSelectResult = () => {}, // ← default para evitar crash
+export function GlobalSearch({
+  appointments = SIN_DATOS,
+  patients = SIN_DATOS,
+  products = SIN_DATOS,
+  orders = SIN_DATOS,
+  onSelectResult = NO_OP,
+  onAltaRapida,
   includeCancelled = false,
   debounceDelay = 300,
-  // CORREGIDO: mapa de rutas configurable
-  screenMap = {
-    order:       'orderDetail',
-    patient:     'patientProfile',
-    product:     'productDetail',
-    appointment: 'appointmentDetail',
-  }
+  screenMap = RUTAS_POR_DEFECTO,
 }) {
   const [query,   setQuery]   = useState('')
   const [results, setResults] = useState([])
@@ -141,6 +160,43 @@ export function GlobalSearch({
 
   const inputRef    = useRef(null)
   const containerRef = useRef(null)
+
+  // ── Alta rápida ───────────────────────────────────────────────────────────
+  //
+  // Ctrl+K ya abría esta caja y sólo sabía BUSCAR lo que ya existe. Acá se le
+  // agrega lo otro: entender "lucia jueves 16 corte" y ofrecer crearlo.
+  //
+  // Se calcula sobre `query` y no sobre el texto con retardo: la sugerencia de
+  // crear tiene que responder mientras se escribe. Buscar puede esperar 300ms
+  // porque recorre listas grandes; interpretar una frase corta no.
+  const altaRapida = useMemo(() => {
+    if (!onAltaRapida || query.trim().length < 3) return null
+    try {
+      const r = interpretar(query, { clientes: patients, articulos: products, hoy: new Date() })
+      return r.entendido ? r : null
+    } catch {
+      return null   // una frase rara nunca puede tirar abajo la búsqueda
+    }
+  }, [query, patients, products, onAltaRapida])
+
+  const confirmarAlta = useCallback(() => {
+    if (!altaRapida) return
+    onAltaRapida({
+      patientId:   altaRapida.cliente?.id ?? null,
+      patientName: altaRapida.cliente?.name ?? '',
+      startTime:   aInicio(altaRapida),
+      productId:   altaRapida.articulo?.id ?? null,
+      title:       altaRapida.articulo?.name ?? '',
+      price:       altaRapida.precio,
+      faltantes:   altaRapida.faltantes,
+    })
+    setQuery('')
+    setResults(SIN_DATOS)
+    setIsOpen(false)
+    setFocused(-1)
+    inputRef.current?.blur()
+  }, [altaRapida, onAltaRapida])
+
 
   const debouncedQuery = useDebounce(query, debounceDelay)
 
@@ -160,9 +216,14 @@ export function GlobalSearch({
   // ── Búsqueda unificada con deduplicación mejorada ────────────────────────────
   useEffect(() => {
     const lower = debouncedQuery.trim().toLowerCase()
-    if (!lower) { 
-      setResults([])
-      return 
+    if (!lower) {
+      // Segunda red de contención: `setResults([])` a secas guarda un array
+      // NUEVO cada vez, y React lo trata como cambio de estado aunque el
+      // contenido sea el mismo. Devolviendo el mismo array cuando ya está
+      // vacío, React corta el render y el ciclo no puede arrancar aunque
+      // alguna dependencia vuelva a ser inestable.
+      setResults(previos => (previos.length === 0 ? previos : SIN_DATOS))
+      return
     }
 
     const matched = [
@@ -184,7 +245,16 @@ export function GlobalSearch({
     
     setResults(unique)
     setFocused(-1)
-  }, [debouncedQuery, includeCancelled])
+
+    // Las cuatro colecciones van en las deps porque el efecto las usa:
+    // GlobalSearch vive en el header y nunca se desmonta, así que sin esto los
+    // resultados no se recalculaban cuando llegaban los datos de Firestore o
+    // creabas un cliente — había que borrar una letra y volver a escribirla.
+    //
+    // Depende de que las cuatro tengan identidad estable entre renders. Los
+    // defaults de arriba son constantes de módulo justamente por eso: cuando
+    // eran `= []` en la firma, esta lista de deps causaba un bucle infinito.
+  }, [debouncedQuery, includeCancelled, patients, products, appointments, orders])
 
   // ── Seleccionar resultado (con validación de ruta) ───────────────────────────
   const handleSelect = useCallback((item) => {
@@ -201,7 +271,7 @@ export function GlobalSearch({
       screen: targetScreen
     })
     setQuery('')
-    setResults([])
+    setResults(SIN_DATOS)
     setIsOpen(false)
     setFocused(-1)
     inputRef.current?.blur()
@@ -209,6 +279,14 @@ export function GlobalSearch({
 
   // ── Teclado: ↑↓ Enter Escape ─────────────────────────────────────────────────
   const handleKeyDown = useCallback((e) => {
+    // Enter crea, salvo que se haya bajado con las flechas hasta un resultado.
+    // Asi la mano no tiene que salir del teclado: se escribe la frase y se
+    // confirma, o se baja a un resultado existente y se abre. Nunca las dos.
+    if (e.key === 'Enter' && altaRapida && focused === -1) {
+      e.preventDefault()
+      confirmarAlta()
+      return
+    }
     if (!isOpen || results.length === 0) return
 
     if (e.key === 'ArrowDown') {
@@ -225,7 +303,7 @@ export function GlobalSearch({
       setFocused(-1)
       inputRef.current?.blur()
     }
-  }, [isOpen, results, focused, handleSelect])
+  }, [isOpen, results, focused, handleSelect, altaRapida, confirmarAlta])
 
   // ── Click fuera ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -271,7 +349,9 @@ export function GlobalSearch({
 
   // Calcular si mostrar el estado "sin resultados"
   const hasActiveSearch = debouncedQuery.trim().length > 0
-  const showNoResults = isOpen && hasActiveSearch && results.length === 0
+  // Si hay sugerencia de alta, el desplegable ya muestra algo util: decir
+  // "sin resultados" al lado seria contradictorio.
+  const showNoResults = isOpen && hasActiveSearch && results.length === 0 && !altaRapida
 
   // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
@@ -343,7 +423,7 @@ export function GlobalSearch({
         </div>
       )}
 
-      {isOpen && results.length > 0 && (
+      {isOpen && (results.length > 0 || altaRapida) && (
         <div
           className="search-results"
           role="listbox"
@@ -363,6 +443,41 @@ export function GlobalSearch({
             overflowY: 'auto'
           }}
         >
+          {/* La sugerencia de CREAR, primero. Aparece incluso sin resultados:
+              escribir el nombre de un cliente que existe mas una fecha no
+              encuentra nada que buscar, y es justo el caso en que se quiere
+              dar de alta.
+
+              Va DENTRO del desplegable, no flotando aparte: los dos eran
+              position:absolute con top:100% y se tapaban entre si. */}
+          {altaRapida && (
+            <div
+              className="alta-rapida"
+              role="button"
+              tabIndex={0}
+              onClick={confirmarAlta}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); confirmarAlta() } }}
+            >
+              <span className="alta-rapida-icono">✨</span>
+              <div className="alta-rapida-texto">
+                <strong>{altaRapida.cliente?.name}</strong>
+                <span className="alta-rapida-cuando">{describir(altaRapida)}</span>
+                {(altaRapida.articulo || altaRapida.precio != null) && (
+                  <span className="alta-rapida-item">
+                    {altaRapida.articulo?.name || 'Sin detalle'}
+                    {altaRapida.precio != null && ` · $${altaRapida.precio}`}
+                  </span>
+                )}
+                {altaRapida.faltantes.length > 0 && (
+                  <span className="alta-rapida-faltan">
+                    Falta {altaRapida.faltantes.join(' y ')} — se completa al abrir
+                  </span>
+                )}
+              </div>
+              <span className="alta-rapida-enter">⏎</span>
+            </div>
+          )}
+
           {/* Sugerencia de filtro rápido (modo profesional) */}
           {results.length > 3 && (
             <div style={{ 

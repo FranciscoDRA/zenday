@@ -37,14 +37,43 @@ setTimeout(() => onActivate(key.trim()), 1200)      } else {
     }
   }
 
+  // FIX: writeText sin await, así que el try/catch no lo cubría. Si el copiado
+  // fallaba, igual decía "ID copiado al portapapeles" y el error quedaba como
+  // una promesa sin capturar en la consola. Es la pantalla de licencia: acá el
+  // usuario NECESITA ese ID para que le emitas la clave.
   async function handleCopyDeviceId() {
+    let id
     try {
-      const id = await window.electronAPI.getDeviceId()
-      navigator.clipboard.writeText(id)
+      id = await window.electronAPI.getDeviceId()
+    } catch {
+      setError('No se pudo obtener el ID del dispositivo.')
+      return
+    }
+    if (!id) { setError('No se pudo obtener el ID del dispositivo.'); return }
+
+    let copiado = false
+    try {
+      await navigator.clipboard.writeText(id)
+      copiado = true
+    } catch {
+      // Respaldo para cuando el permiso está denegado o la ventana sin foco
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = id
+        Object.assign(ta.style, { position: 'fixed', left: '-999999px' })
+        document.body.appendChild(ta)
+        ta.focus(); ta.select()
+        copiado = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch { copiado = false }
+    }
+
+    if (copiado) {
       setSuccess('ID copiado al portapapeles.')
       setTimeout(() => setSuccess(''), 2000)
-    } catch {
-      setError('No se pudo copiar el ID.')
+    } else {
+      // Se muestra el ID para que lo pueda copiar a mano.
+      setError(`No se pudo copiar. Tu ID es: ${id}`)
     }
   }
 
@@ -91,8 +120,8 @@ setTimeout(() => onActivate(key.trim()), 1200)      } else {
             <path d="M24 30L30 36L42 24" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
             <defs>
               <linearGradient id="lg" x1="0" y1="0" x2="64" y2="64">
-                <stop offset="0%" stopColor="#6366f1" />
-                <stop offset="100%" stopColor="#10b981" />
+                <stop offset="0%" stopColor="var(--accent-blue)" />
+                <stop offset="100%" stopColor="var(--accent-green)" />
               </linearGradient>
             </defs>
           </svg>

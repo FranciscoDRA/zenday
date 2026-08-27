@@ -3,6 +3,8 @@
 // También escucha /pedidos en Firebase y los importa como pagos pendientes
 
 import { useEffect, useRef, useCallback } from 'react'
+import { ref, onValue } from 'firebase/database'
+import { db } from '../firebase'
 
 const STORAGE_KEY      = 'zenday-integrations-v2'
 const PEDIDOS_IMPORTED = 'zenday-pedidos-importados'
@@ -38,7 +40,7 @@ function addImportedKey(key) {
     const keys = getImportedKeys()
     keys.add(key)
     localStorage.setItem(PEDIDOS_IMPORTED, JSON.stringify([...keys]))
-  } catch {}
+  } catch { /* sin espacio o storage no disponible: se ignora */ }
 }
 
 // ─── FETCH PEDIDOS DESDE FIREBASE ────────────────────────────────────────────
@@ -75,7 +77,7 @@ function pedidoToAppointments(pedido) {
     id:              `mp-${pedido.key}-${i}-${Date.now()}`,
     patientName:     nombre,
     patientId:       null,
-    phone:           telefono,
+    patientPhone:    telefono,
     productName:     item.nombre || item.name || 'Producto web',
     productId:       null,
     price:           Number(item.precio || item.price || 0) * Number(item.cantidad || item.quantity || 1),
@@ -87,7 +89,7 @@ function pedidoToAppointments(pedido) {
     fromMercadoPago: true,
     paymentId:       pedido.paymentId,
     externalRef:     pedido.key,
-    notes:           `Pedido web MP #${pedido.paymentId} — ${nota}`,
+    notes:           `Pedido web MP #${pedido.paymentId || pedido.key} — ${nota}`,
     createdAt:       new Date().toISOString(),
   }))
 }
@@ -100,15 +102,21 @@ async function fetchExternalStock(integration) {
   try {
     switch (integration.type) {
       case 'firebase': {
-        const url      = `${c.databaseURL.replace(/\/$/, '')}/${c.path || 'productos'}.json`
+        const url = `${c.databaseURL.replace(/\/$/, '')}/${c.path || 'productos'}.json`
         const response = await window.electronAPI.fetchExternal(url)
         if (!response.ok || !response.data) return []
         return Object.entries(response.data)
           .filter(([, val]) => val !== null && typeof val === 'object')
           .map(([key, val]) => ({
-            externalId: key,
-            name:       val[c.nameField  || 'nombre'] || key,
-            stock:      Number(val[c.stockField || 'stock']) || 0,
+            externalId:  key,
+            name:        val[c.nameField  || 'nombre'] || key,
+            stock:       Number(val[c.stockField || 'stock']) || 0,
+            price:       Number(val.precio || val.price) || 0,
+            description: val.descripcion || val.description || '',
+            imagenes:    Array.isArray(val.imagenes) 
+                           ? val.imagenes.filter(img => typeof img === 'string' && img.trim())
+                           : (val.imagen ? [val.imagen] : []),
+            category:    val.categoria || val.category || '',
           }))
       }
       case 'woocommerce': {
@@ -118,7 +126,14 @@ async function fetchExternalStock(integration) {
           { headers: { Authorization: `Basic ${auth}` } }
         )
         if (!response.ok || !Array.isArray(response.data)) return []
-        return response.data.map(p => ({ externalId: String(p.id), name: p.name, stock: Number(p.stock_quantity) || 0 }))
+        return response.data.map(p => ({ 
+          externalId: String(p.id), 
+          name: p.name, 
+          stock: Number(p.stock_quantity) || 0,
+          price: Number(p.price) || 0,
+          imagenes: p.images?.map(img => img.src) || [],
+          description: p.short_description || p.description || '',
+        }))
       }
       case 'shopify': {
         const response = await window.electronAPI.fetchExternal(
@@ -127,8 +142,12 @@ async function fetchExternalStock(integration) {
         )
         if (!response.ok || !response.data?.products) return []
         return response.data.products.map(p => ({
-          externalId: String(p.id), name: p.title,
+          externalId: String(p.id), 
+          name: p.title,
           stock: p.variants?.reduce((s, v) => s + (v.inventory_quantity || 0), 0) || 0,
+          price: Number(p.variants?.[0]?.price) || 0,
+          imagenes: p.images?.map(img => img.src) || [],
+          description: p.body_html || '',
         }))
       }
       case 'mercadolibre': {
@@ -146,7 +165,12 @@ async function fetchExternalStock(integration) {
           )
         )
         return items.filter(Boolean).map(p => ({
-          externalId: String(p.id), name: p.title, stock: Number(p.available_quantity) || 0,
+          externalId: String(p.id), 
+          name: p.title, 
+          stock: Number(p.available_quantity) || 0,
+          price: Number(p.price) || 0,
+          imagenes: p.pictures?.map(pic => pic.url) || [],
+          description: p.description || '',
         }))
       }
       case 'rest': {
@@ -163,6 +187,9 @@ async function fetchExternalStock(integration) {
           externalId: String(p[c.idField || 'id'] || ''),
           name:       p[c.nameField || 'name'] || '',
           stock:      Number(p[c.stockField || 'stock']) || 0,
+          price:      Number(p.price) || 0,
+          imagenes:   p.images || (p.image ? [p.image] : []),
+          description: p.description || '',
         }))
       }
       default: return []
@@ -173,7 +200,7 @@ async function fetchExternalStock(integration) {
   }
 }
 
-// ─── APLICAR CAMBIOS DE STOCK ─────────────────────────────────────────────────
+// ─── APLICAR CAMBIOS DE STOCK (con imágenes) ─────────────────────────────────
 
 function applyStockChanges(zenProducts, externalList, setProducts, onChanges) {
   if (!Array.isArray(zenProducts) || !Array.isArray(externalList)) return
@@ -190,10 +217,26 @@ function applyStockChanges(zenProducts, externalList, setProducts, onChanges) {
       if (score > bestScore) { bestScore = score; best = ext }
     })
     if (!best || bestScore < 0.7) return zen
-    if (best.stock === zen.stock)  return zen
+    
+    // Detectar cualquier cambio (stock o imágenes)
+    const stockChanged = best.stock !== zen.stock
+    const imageChanged = best.imagenes?.length > 0 && 
+      JSON.stringify(best.imagenes) !== JSON.stringify(zen.imagenes)
+    
+    if (!stockChanged && !imageChanged) return zen
+    
     hasChanges = true
-    changes.push({ name: zen.name, before: zen.stock, after: best.stock })
-    return { ...zen, stock: best.stock }
+    if (stockChanged) {
+      changes.push({ name: zen.name, before: zen.stock, after: best.stock })
+    }
+    
+    return { 
+      ...zen, 
+      stock: best.stock,
+      ...(best.price > 0 && { price: best.price }),
+      ...(imageChanged && { imagenes: best.imagenes }),
+      ...(best.description && { description: best.description }),
+    }
   })
 
   if (hasChanges) {
@@ -267,12 +310,63 @@ export function useSyncListener({ products, setProducts, setAppointments, onChan
     console.log('[Sync] 🛒 Escuchando pedidos web (cada 30s)')
   }, [setAppointments, onNewOrder])
 
-  // ── Polling de stock ──────────────────────────────────────────────────────
+  // ── Polling de stock (con soporte para tiempo real en Firebase) ───────────
   const startPolling = useCallback((integration) => {
+    // Limpiar timer existente si hay
     if (pollTimersRef.current[integration.id]) {
       clearInterval(pollTimersRef.current[integration.id])
+      delete pollTimersRef.current[integration.id]
     }
 
+    // ── TIEMPO REAL PARA FIREBASE ──────────────────────────────
+    if (integration.type === 'firebase' && integration.config?.databaseURL) {
+      const c = integration.config
+      
+      // Verificar si es el mismo proyecto Firebase de ZenDay
+      const isZenDayFirebase = c.databaseURL === 'https://zenday-297b3-default-rtdb.firebaseio.com' ||
+                                c.useInternalFirebase === true
+      
+      if (isZenDayFirebase && db) {
+        const productosRef = ref(db, c.path || 'productos')
+        const unsub = onValue(productosRef, (snapshot) => {
+          if (!isMountedRef.current) return
+          if (!snapshot.exists()) return
+          
+          const data = snapshot.val()
+          const externalList = Object.entries(data)
+            .filter(([, val]) => val !== null && typeof val === 'object')
+            .map(([key, val]) => ({
+              externalId:  key,
+              name:        val[c.nameField || 'nombre'] || key,
+              stock:       Number(val[c.stockField || 'stock']) || 0,
+              price:       Number(val.precio || val.price) || 0,
+              description: val.descripcion || val.description || '',
+              imagenes:    Array.isArray(val.imagenes) 
+                             ? val.imagenes.filter(img => typeof img === 'string' && img.trim())
+                             : (val.imagen ? [val.imagen] : []),
+              category:    val.categoria || val.category || '',
+            }))
+
+          applyStockChanges(
+            productsRef.current,
+            externalList,
+            setProducts,
+            (changes) => { 
+              if (onChanges) onChanges(integration.name, changes, 'realtime') 
+            }
+          )
+        }, (error) => {
+          console.warn(`[Sync] Firebase error: ${integration.name}`, error.message)
+        })
+
+        // Guardar la función de cleanup
+        pollTimersRef.current[`${integration.id}-realtime`] = unsub
+        console.log(`[Sync] ⚡ Listener en tiempo real: ${integration.name}`)
+        return
+      }
+    }
+
+    // ── POLLING PARA OTROS TIPOS ────────────────────────────────
     const poll = async () => {
       if (!isMountedRef.current) return
       try {
@@ -306,7 +400,14 @@ export function useSyncListener({ products, setProducts, setAppointments, onChan
     })
 
     return () => {
-      Object.values(pollTimersRef.current).forEach(id => clearInterval(id))
+      // Limpiar timers y listeners en tiempo real
+      Object.entries(pollTimersRef.current).forEach(([, val]) => {
+        if (typeof val === 'function') {
+          val() // unsubscribe de onValue
+        } else {
+          clearInterval(val)
+        }
+      })
       if (pedidosTimerRef.current) clearInterval(pedidosTimerRef.current)
       pollTimersRef.current  = {}
       pedidosTimerRef.current = null
@@ -315,11 +416,19 @@ export function useSyncListener({ products, setProducts, setAppointments, onChan
 
   // ── Reconectar ────────────────────────────────────────────────────────────
   const reconnect = useCallback(() => {
-    Object.values(pollTimersRef.current).forEach(id => clearInterval(id))
+    // Limpiar todo
+    Object.entries(pollTimersRef.current).forEach(([, val]) => {
+      if (typeof val === 'function') {
+        val() // unsubscribe de onValue
+      } else {
+        clearInterval(val)
+      }
+    })
     if (pedidosTimerRef.current) clearInterval(pedidosTimerRef.current)
     pollTimersRef.current  = {}
     pedidosTimerRef.current = null
 
+    // Reiniciar
     const integrations = (() => {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
     })()

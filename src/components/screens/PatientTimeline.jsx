@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { normalizarNotas, toLocalDateKey } from '../../utils/helpers'
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
@@ -321,10 +322,18 @@ function EmptyState({ filter }) {
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
-export function PatientTimeline({ patient, appointments = [], onNavigate }) {
+// `onAddNote` es obligatorio en la práctica: sin él las notas se escribían en
+// un useState del componente y no se guardaban en NINGÚN lado. El psicólogo
+// escribía la evolución de la sesión, la veía aparecer en la línea de tiempo,
+// y desaparecía al volver a entrar — o antes incluso, porque PatientDetailScreen
+// remonta esto con cada snapshot de Firestore.
+//
+// Lo confuso era que la misma pantalla tiene otro "agregar nota" (la pestaña
+// Notas) que sí persiste vía updatePatient. Dos botones casi iguales y uno
+// tiraba lo escrito.
+export function PatientTimeline({ patient, appointments = [], onNavigate, onAddNote }) {
   const [filter, setFilter] = useState('all')
   const [showNoteForm, setShowNoteForm] = useState(false)
-  const [localNotes, setLocalNotes] = useState([])
 
   const patientAppointments = useMemo(() => {
     if (!patient) return []
@@ -338,7 +347,8 @@ export function PatientTimeline({ patient, appointments = [], onNavigate }) {
     const list = []
 
     patientAppointments.forEach(a => {
-      const date = a.startTime ? new Date(a.startTime).toISOString().split('T')[0] : null
+      // En UTC, una cita de la noche caia agrupada en el dia siguiente.
+      const date = a.startTime ? toLocalDateKey(a.startTime) : null
       const time = a.startTime ? formatTime(a.startTime) : null
       const uid = a.id || a.recurrenceGroupId || a.startTime
       const appointmentTitle = a.title || (a.type && TYPE_LABELS[a.type]) || a.service || 'Cita'
@@ -382,20 +392,26 @@ export function PatientTimeline({ patient, appointments = [], onNavigate }) {
       }
     })
 
-    localNotes.forEach(n => {
+    // Se leen de patient.notes — las mismas que muestra la pestaña Notas — en
+    // vez de un estado local que se vaciaba en cada remount.
+    // normalizarNotas por lo mismo que en PatientDetailScreen: los clientes
+    // creados por un pedido web tenían `notes` como string, y esto lo
+    // desarmaba en una "nota" por carácter.
+    normalizarNotas(patient?.notes).forEach((n, i) => {
+      const ts = new Date(n.date ?? 0).getTime()
       list.push({
-        id: n.id,
+        id: n.id ?? `nota-${i}`,
         type: 'note',
         date: n.date,
         title: 'Nota',
-        desc: n.text,
+        desc: n.content ?? n.text ?? '',
         amount: null,
-        _ts: n._ts,
+        _ts: Number.isNaN(ts) ? 0 : ts,
       })
     })
 
     return list.sort((a, b) => b._ts - a._ts)
-  }, [patientAppointments, localNotes])
+  }, [patientAppointments, patient?.notes])
 
   const stats = useMemo(() => {
     const totalCitas = patientAppointments.length
@@ -420,13 +436,8 @@ export function PatientTimeline({ patient, appointments = [], onNavigate }) {
   , [events, filter])
 
   function handleSaveNote(text) {
-    const now = new Date()
-    setLocalNotes(prev => [...prev, {
-      id: `note-${Date.now()}`,
-      date: now.toISOString().split('T')[0],
-      text,
-      _ts: now.getTime(),
-    }])
+    if (!text?.trim()) return
+    onAddNote?.(text.trim())     // persiste vía updatePatient, igual que la pestaña Notas
     setShowNoteForm(false)
   }
 

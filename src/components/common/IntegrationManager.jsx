@@ -5,6 +5,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useToast } from '../../contexts/ToastContext'
+import { useConfirm } from '../../contexts/ConfirmContext'
+import { newId } from '../../utils/helpers'
 
 // ─── PLATAFORMAS ──────────────────────────────────────────────────────────────
 
@@ -13,7 +15,7 @@ const PLATFORMS = {
     id:          'firebase',
     label:       'Firebase',
     icon:        '🔥',
-    color:       '#f59e0b',
+    color:       'var(--accent-amber)',
     description: 'Google Firebase Realtime Database',
     fields: [
       { key: 'name',        label: 'Nombre',         placeholder: 'Ej: patofelting.com',                          required: true },
@@ -40,7 +42,7 @@ const PLATFORMS = {
     id:          'shopify',
     label:       'Shopify',
     icon:        '🏪',
-    color:       '#10b981',
+    color:       'var(--accent-green)',
     description: 'Tienda Shopify',
     fields: [
       { key: 'name',     label: 'Nombre',              placeholder: 'Mi tienda Shopify',          required: true },
@@ -52,7 +54,7 @@ const PLATFORMS = {
     id:          'mercadolibre',
     label:       'MercadoLibre',
     icon:        '🛍️',
-    color:       '#f59e0b',
+    color:       'var(--accent-amber)',
     description: 'Publicaciones de MercadoLibre',
     fields: [
       { key: 'name',        label: 'Nombre',       placeholder: 'Mi cuenta ML', required: true },
@@ -64,7 +66,7 @@ const PLATFORMS = {
     id:          'rest',
     label:       'API REST',
     icon:        '🔌',
-    color:       '#6366f1',
+    color:       'var(--accent-blue)',
     description: 'Cualquier API REST',
     fields: [
       { key: 'name',             label: 'Nombre',                   placeholder: 'Mi API',                 required: true },
@@ -414,6 +416,7 @@ const SavedIntegrationItem = React.memo(({ integ, loading, activeId, onSync, onD
 
 export function IntegrationManager({ products = [], onIntegrationsChange }) {
   const toast = useToast()
+  const { confirm } = useConfirm()
 
   const [isOpen,      setIsOpen]      = useState(false)
   const [view,        setView]        = useState('menu')
@@ -458,7 +461,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
   // CORREGIDO: logSync sin side effects en el updater
   const logSync = useCallback((integrationName, status, details) => {
     const newLog = {
-      id: Date.now(),
+      id: newId(),
       integrationName,
       status,
       timestamp: new Date().toISOString(),
@@ -481,7 +484,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
     }
     
     const newInteg = {
-      id:        Date.now(),
+      id: newId(),
       type:      addType,
       name:      formData.name || platform.label,
       icon:      platform.icon,
@@ -496,11 +499,16 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
     setTestingConn(null)
     
     if (!test.success) {
-      const confirm = window.confirm(
+      // Era window.confirm: en Electron eso abre el cartel gris del sistema,
+      // con la ruta del archivo arriba. Al lado del resto de la app parece
+      // que algo se rompio. useConfirm usa el modal propio, que ademas se
+      // cierra con Escape y confirma con Enter.
+      const ok = await confirm(
         `⚠️ Error de conexión: ${test.error}\n\n` +
-        `¿Querés guardar la integración igualmente? Podrás corregir los datos más tarde.`
+        `¿Querés guardar la integración igualmente? Podrás corregir los datos más tarde.`,
+        'Guardar con errores'
       )
-      if (!confirm) return
+      if (!ok) return
     }
     
     const updated = [...saved, newInteg]
@@ -755,16 +763,16 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                       fontSize:11 }}>
                       <span style={{ 
                         width:8, height:8, borderRadius:'50%', flexShrink:0,
-                        background: log.status === 'success' ? '#10b981' : 
-                                   log.status === 'partial' ? '#f59e0b' : '#ef4444'
+                        background: log.status === 'success' ? 'var(--accent-green)' : 
+                                   log.status === 'partial' ? 'var(--accent-amber)' : 'var(--accent-red)'
                       }} />
                       <span style={{ flex:1 }}>{log.integrationName}</span>
                       <span style={{ color:'var(--text-tertiary)' }}>
                         {new Date(log.timestamp).toLocaleDateString()}
                       </span>
                       <span style={{ 
-                        color: log.status === 'success' ? '#10b981' : 
-                               log.status === 'partial' ? '#f59e0b' : '#ef4444' 
+                        color: log.status === 'success' ? 'var(--accent-green)' : 
+                               log.status === 'partial' ? 'var(--accent-amber)' : 'var(--accent-red)' 
                       }}>
                         {log.status === 'success' ? '✓ OK' : 
                          log.status === 'partial' ? '⚠️ Parcial' : '❌ Error'}
@@ -801,7 +809,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                   <div key={field.key}>
                     <label style={{ display:'block', fontSize:13, fontWeight:600, marginBottom:5 }}>
                       {field.label}
-                      {field.required && <span style={{ color:'#ef4444', marginLeft:3 }}>*</span>}
+                      {field.required && <span style={{ color:'var(--accent-red)', marginLeft:3 }}>*</span>}
                     </label>
                     <input
                       type={field.type || 'text'}
@@ -843,9 +851,9 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
           <>
             <div style={{ display:'flex', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
               {[
-                { label:'ZenDay',        value:matches.length,   color:'#6366f1' },
-                { label:'Matches',       value:stats.matched,    color:'#10b981' },
-                { label:'Diferencias',   value:stats.withDiff,   color:'#f59e0b' },
+                { label:'ZenDay',        value:matches.length,   color:'var(--accent-blue)' },
+                { label:'Matches',       value:stats.matched,    color:'var(--accent-green)' },
+                { label:'Diferencias',   value:stats.withDiff,   color:'var(--accent-amber)' },
                 { label:'Seleccionados', value:stats.selected,   color:'#3b82f6' },
               ].map((s, i) => (
                 <div key={s.label} style={{ flex:1, textAlign:'center', padding:'10px 0',
@@ -876,7 +884,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                         {m.zenProduct.name}
                       </div>
                       <div style={{ fontSize:11, color:'var(--text-tertiary)' }}>
-                        Stock: <strong style={{ color: m.zenProduct.stock > 0 ? '#10b981' : '#ef4444' }}>
+                        Stock: <strong style={{ color: m.zenProduct.stock > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                           {m.zenProduct.stock || 0} uds
                         </strong>
                       </div>
@@ -897,7 +905,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                       </select>
                       {m.matched && (
                         <div style={{ fontSize:10, color:'var(--text-tertiary)', marginTop:2 }}>
-                          Web: <strong style={{ color: m.stockDiff ? '#f59e0b' : 'var(--text-secondary)' }}>
+                          Web: <strong style={{ color: m.stockDiff ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
                             {m.extProduct?.stock ?? '?'} uds {m.stockDiff ? '⚠️' : ''}
                           </strong>
                         </div>
@@ -909,8 +917,8 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                       background: m.matched
                         ? m.score >= 0.95 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'
                         : 'rgba(239,68,68,0.10)',
-                      color: m.matched                        ? m.score >= 0.95 ? '#10b981' : '#f59e0b'
-                        : '#ef4444' }}>
+                      color: m.matched                        ? m.score >= 0.95 ? 'var(--accent-green)' : 'var(--accent-amber)'
+                        : 'var(--accent-red)' }}>
                       {m.matched
                         ? m.score >= 0.95 ? '✓ Exacto' : `~${Math.round(m.score*100)}%`
                         : 'Sin match'}
@@ -967,10 +975,10 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                   </span>
                   {r.ok ? (
                     <span style={{ fontSize:12, color:'var(--text-tertiary)' }}>
-                      {r.before} → <strong style={{ color:'#10b981' }}>{r.after} uds</strong>
+                      {r.before} → <strong style={{ color:'var(--accent-green)' }}>{r.after} uds</strong>
                     </span>
                   ) : (
-                    <span style={{ fontSize:11, color:'#ef4444' }}>{r.error}</span>
+                    <span style={{ fontSize:11, color:'var(--accent-red)' }}>{r.error}</span>
                   )}
                 </div>
               ))}

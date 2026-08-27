@@ -71,16 +71,23 @@ export function NotificationProvider({ children }) {
     setNotifications([])
   }, [])
 
+  // Escrito suelto, este objeto era NUEVO en cada render del provider, aunque
+  // las funciones de adentro fueran siempre las mismas. React compara el value
+  // del contexto por identidad: un objeto nuevo = "cambio" = se re-renderiza
+  // TODO lo que consume el contexto. En ToastContext eso llegaba a resuscribir
+  // los cuatro listeners de Firestore con cada aviso que aparecia en pantalla.
+  const value = useMemo(() => ({
+    notifications,
+    unreadCount,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearAll,
+  }), [notifications, unreadCount, addNotification, markAsRead, markAllAsRead, deleteNotification, clearAll])
+
   return (
-    <NotificationContext.Provider value={{
-      notifications,
-      unreadCount,
-      addNotification,
-      markAsRead,
-      markAllAsRead,
-      deleteNotification,
-      clearAll,
-    }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   )

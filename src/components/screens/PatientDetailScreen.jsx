@@ -6,16 +6,20 @@ import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import PDFViewer from '../common/PDFViewer'
 import { PatientTimeline } from './PatientTimeline'
+import { newId, normalizarNotas, fechaDeNota, motivosParaNoBorrarCliente } from '../../utils/helpers'
+import { ACTIVE_STATUSES } from '../../utils/constants'
 import { 
   saveClientDocument, 
   getClientDocuments, 
   deleteClientDocument, 
+  deleteAllClientDocuments,
+  readClientDocument,
   downloadClientDocument 
 } from '../../utils/exportImport'
 
 export function PatientDetailScreen({ nav, patients, appointments, updatePatient, deletePatient, params }) {
   const toast = useToast()
-  const confirm = useConfirm()
+  const { confirm } = useConfirm()
   const [patient, setPatient] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
@@ -24,6 +28,21 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
   const [selectedPDFName, setSelectedPDFName] = useState('')
   const [uploading, setUploading] = useState(false)
   const [newNote, setNewNote] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Selección múltiple de notas. Los ids se guardan como string: las notas
+  // viejas pueden tener id numérico y las nuevas string, y un Set no los
+  // considera iguales.
+  // SIEMPRE un array, venga como venga.
+  //
+  // Los clientes creados por un pedido web tenían `notes` como STRING. Como
+  // el resto del código asume array, la pantalla desarmaba el texto en
+  // caracteres: 45 filas vacías con "Invalid Date", y todas con id undefined
+  // — por eso "Todas" seleccionaba una sola.
+  const notas = normalizarNotas(patient?.notes)
+
+  const [modoSeleccion, setModoSeleccion] = useState(false)
+  const [notasElegidas, setNotasElegidas] = useState(() => new Set())
   
   const [formData, setFormData] = useState({
     name: '',
@@ -34,6 +53,7 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
     observations: ''
   })
 
+  // Cargar paciente cuando cambia el ID
   useEffect(() => {
     const found = patients.find(p => p.id === params.patientId)
     if (found) {
@@ -48,12 +68,18 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
       })
       loadDocuments(found.id)
     }
-    // 🔴 Eliminado el nav.goBack() para evitar redirecciones en renders intermedios
   }, [params.patientId, patients])
 
-  const loadDocuments = (patientId) => {
-    const docs = getClientDocuments(patientId)
-    setDocuments(docs)
+  // Los adjuntos pasaron a vivir en el disco (electron/documentStore.cjs), así
+  // que listarlos es asíncrono. La primera llamada por cliente migra sola lo
+  // que hubiera quedado en localStorage.
+  const loadDocuments = async (patientId) => {
+    try {
+      setDocuments(await getClientDocuments(patientId))
+    } catch (err) {
+      console.error('[PatientDetail] Error cargando documentos:', err)
+      setDocuments([])
+    }
   }
 
   const handleFileUpload = async (e) => {
@@ -84,20 +110,40 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
     }
   }
 
-  const handleViewDocument = (doc) => {
-    if (doc.mimeType === 'application/pdf') {
-      setSelectedPDF(doc.data)
-      setSelectedPDFName(doc.name)
-    } else {
-      window.open(doc.data, '_blank')
+  // Los metadatos ya no traen los bytes: se leen del disco recién al abrir.
+  // Eso es justamente lo que evita cargar todos los adjuntos en memoria.
+  const handleViewDocument = async (doc) => {
+    try {
+      const dataUrl = doc.data || await readClientDocument(patient.id, doc.id)
+      if (!dataUrl) {
+        toast.addToast('❌ No se pudo abrir el archivo', 'error')
+        return
+      }
+      if (doc.mimeType === 'application/pdf') {
+        setSelectedPDF(dataUrl)
+        setSelectedPDFName(doc.name)
+      } else if (window.electronAPI?.openFile) {
+        const res = await window.electronAPI.openFile(dataUrl, doc.name)
+        if (!res?.success) toast.addToast(res?.error || '❌ No se pudo abrir el archivo', 'error')
+      } else {
+        window.open(dataUrl, '_blank', 'noopener,noreferrer')
+      }
+    } catch (err) {
+      console.error('[PatientDetail] Error abriendo documento:', err)
+      toast.addToast('❌ No se pudo abrir el archivo', 'error')
     }
   }
 
   const handleDeleteDocument = async (doc) => {
     if (await confirm(`¿Eliminar "${doc.name}"?`)) {
-      deleteClientDocument(patient.id, doc.id)
-      setDocuments(prev => prev.filter(d => d.id !== doc.id))
-      toast.addToast('✅ Documento eliminado', 'success')
+      try {
+        await deleteClientDocument(patient.id, doc.id)
+        setDocuments(prev => prev.filter(d => String(d.id) !== String(doc.id)))
+        toast.addToast('✅ Documento eliminado', 'success')
+      } catch (err) {
+        console.error('[PatientDetail] Error borrando documento:', err)
+        toast.addToast('❌ No se pudo eliminar el documento', 'error')
+      }
     }
   }
 
@@ -124,38 +170,215 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
     toast.addToast('Cliente actualizado', 'success')
   }
 
-  const handleAddNote = () => {
+  // ========== NOTAS: VERSIÓN CORREGIDA ==========
+  const handleAddNote = async () => {
     if (!newNote.trim()) {
       toast.addToast('Escribe una nota antes de guardar', 'error')
       return
     }
 
     const note = {
-      id: Date.now(),
+      id: newId(),
       content: newNote,
       date: new Date().toISOString(),
       dateFormatted: new Date().toLocaleString()
     }
 
-    const updatedNotes = [...(patient.notes || []), note]
+    const currentNotes = notas
+    const updatedNotes = [...currentNotes, note]
+    
+    // Actualizar en el estado local
     updatePatient(patient.id, { notes: updatedNotes })
-    setPatient({ ...patient, notes: updatedNotes })
+    setPatient(prev => ({ ...prev, notes: updatedNotes }))
     setNewNote('')
     toast.addToast('📝 Nota agregada', 'success')
   }
 
+  // La nota que se agrega desde el Historial es la MISMA que la de la pestaña
+  // Notas: mismo formato, mismo updatePatient, misma persistencia. Antes el
+  // botón del Historial escribía en un useState de PatientTimeline y se perdía.
+  const guardarNotaDesdeHistorial = (texto) => {
+    if (!texto?.trim() || !patient) return
+    const note = {
+      id: newId(),
+      content: texto.trim(),
+      date: new Date().toISOString(),
+      dateFormatted: new Date().toLocaleString(),
+    }
+    const updatedNotes = [...notas, note]
+    updatePatient(patient.id, { notes: updatedNotes })
+    setPatient(prev => ({ ...prev, notes: updatedNotes }))
+    toast.addToast('📝 Nota agregada', 'success')
+  }
+
+  // ========== ELIMINAR NOTA ==========
   const handleDeleteNote = async (noteId) => {
-    if (await confirm('¿Eliminar esta nota?', 'Esta acción no se puede deshacer')) {
-      const updatedNotes = (patient.notes || []).filter(n => n.id !== noteId)
-      updatePatient(patient.id, { notes: updatedNotes })
-      setPatient({ ...patient, notes: updatedNotes })
-      toast.addToast('Nota eliminada', 'success')
+    const confirmed = await confirm(
+      '¿Eliminar esta nota?', 
+      'Esta acción no se puede deshacer'
+    )
+    if (!confirmed) return
+
+    const currentNotes = notas
+    // String() en las dos puntas: las notas creadas por versiones anteriores
+    // pueden tener id numérico, y `!==` estricto no las encontraría.
+    const updatedNotes = currentNotes.filter(n => String(n.id) !== String(noteId))
+
+    if (updatedNotes.length === currentNotes.length) {
+      toast.addToast('No se encontró esa nota', 'error')
+      return
+    }
+
+    updatePatient(patient.id, { notes: updatedNotes })
+    setPatient(prev => ({ ...prev, notes: updatedNotes }))
+    toast.addToast('Nota eliminada', 'success')
+  }
+
+  // ========== NOTAS: SELECCIÓN MÚLTIPLE ==========
+  const alternarNota = (noteId) => {
+    setNotasElegidas(prev => {
+      const next = new Set(prev)
+      const k = String(noteId)
+      if (next.has(k)) next.delete(k); else next.add(k)
+      return next
+    })
+  }
+
+  const salirDeSeleccion = () => {
+    setModoSeleccion(false)
+    setNotasElegidas(new Set())
+  }
+
+  const alternarTodas = () => {
+    const todas = notas.map(n => String(n.id))
+    setNotasElegidas(prev => (prev.size === todas.length ? new Set() : new Set(todas)))
+  }
+
+  const borrarNotasElegidas = async () => {
+    const cuantas = notasElegidas.size
+    if (cuantas === 0) return
+
+    const ok = await confirm(
+      cuantas === 1
+        ? '¿Eliminar la nota seleccionada?'
+        : `¿Eliminar ${cuantas} notas?`,
+      'Esto no se puede deshacer'
+    )
+    if (!ok) return
+
+    const currentNotes = notas
+    const updatedNotes = currentNotes.filter(n => !notasElegidas.has(String(n.id)))
+
+    updatePatient(patient.id, { notes: updatedNotes })
+    setPatient(prev => ({ ...prev, notes: updatedNotes }))
+    salirDeSeleccion()
+    toast.addToast(
+      cuantas === 1 ? 'Nota eliminada' : `${cuantas} notas eliminadas`, 'success')
+  }
+
+  // ========== VERIFICAR SI EL CLIENTE TIENE PEDIDOS ACTIVOS ==========
+  const hasActiveOrders = () => {
+    if (!patient) return false
+    
+    // 1. Verificar en appointments (agenda profesional)
+    const activeAppointments = appointments.filter(apt => {
+      const isMatch = apt.patientId === patient.id
+      const isActive = apt.status !== 'completed' && apt.status !== 'cancelled' && apt.status !== 'delivered'
+      return isMatch && isActive
+    })
+    
+    if (activeAppointments.length > 0) return true
+    
+    // 2. Verificar en localStorage del panel emprendedor
+    try {
+      const emprendedorPedidos = localStorage.getItem('zenday-emprendedor-pedidos')
+      if (emprendedorPedidos) {
+        const pedidos = JSON.parse(emprendedorPedidos)
+        const activePedidos = pedidos.filter(p => 
+          p.cliente === patient.name && p.estado !== 'ENTREGADO'
+        )
+        if (activePedidos.length > 0) return true
+      }
+    } catch (err) {
+      console.error('[PatientDetail] Error checking emprendedor orders:', err)
+    }
+    
+    return false
+  }
+
+  // ========== ELIMINAR CLIENTE CON VALIDACIÓN ==========
+  const handleDeletePatient = async () => {
+    if (isDeleting) return
+    
+    // No se borra un cliente que todavía tiene cosas colgando: pedidos sin
+    // cerrar, notas o documentos. Los tres son resolubles por el usuario, así
+    // que el cartel dice exactamente qué falta en vez de dar una orden
+    // imposible como la de antes ("completá los pedidos" cuando ya estaban
+    // completos).
+    const pedidosActivos = (appointments || []).filter(a =>
+      ACTIVE_STATUSES.has(a.status) && String(a.patientId) === String(patient.id)
+    ).length
+
+    const motivos = motivosParaNoBorrarCliente({
+      pedidosActivos: pedidosActivos + (hasActiveOrders() && !pedidosActivos ? 1 : 0),
+      notas:    notas.length,
+      adjuntos: documents.length,
+    })
+
+    if (motivos.length > 0) {
+      await confirm(
+        `No se puede eliminar a ${patient.name} todavía.\n\n` +
+        `Tiene ${motivos.join(', ')}.\n\n` +
+        'Eliminá eso primero desde las pestañas de arriba y volvé a intentar.',
+        'Falta vaciar el cliente',
+        { showCancel: false, confirmText: 'Entendido' }
+      )
+      return
+    }
+    
+    // Confirmación final
+    const confirmed = await confirm(
+      `⚠️ ¿ELIMINAR CLIENTE?\n\n` +
+      `Cliente: ${patient.name}\n` +
+      `Citas: ${appointments.filter(a => a.patientId === patient.id).length}\n\n` +
+      `Esta acción NO se puede deshacer.\n\n` +
+      `¿Estás ABSOLUTAMENTE seguro?`,
+      'Eliminar cliente',
+      true
+    )
+    
+    if (!confirmed) return
+    
+    setIsDeleting(true)
+    
+    try {
+      // Eliminar documentos asociados (borra la carpeta entera de una)
+      // El orden importa: deletePatient puede devolver false (el cliente tiene
+      // pedidos activos, o el usuario cancela el segundo cartel). Si los
+      // documentos se borran primero, el cliente se queda en la lista pero sus
+      // PDF, estudios e informes ya no existen. Se borra el cliente PRIMERO y
+      // recien despues sus archivos.
+      
+      // FIX: deletePatient devuelve false si el cliente tiene pedidos activos
+      // o si el usuario cancela la confirmación. Antes se ignoraba y salía
+      // "🗑️ Cliente eliminado" + volver atrás, con el cliente todavía en la lista.
+      const eliminado = await deletePatient(patient.id)
+      if (eliminado === false) return   // deletePatient ya explicó el motivo
+
+      await deleteAllClientDocuments(patient.id)
+      toast.addToast(`🗑️ Cliente "${patient.name}" eliminado`, 'success')
+      nav.goBack()
+    } catch (error) {
+      console.error('[PatientDetail] Error deleting patient:', error)
+      toast.addToast('❌ Error al eliminar el cliente', 'error')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
   if (!patient) return null
 
-  // 🔴 CORREGIDO: filtrar solo por patientId (evita mezclar clientes con el mismo nombre)
+  // Filtrar appointments por patientId
   const patientAppointments = appointments.filter(apt => apt.patientId === patient.id)
   const totalAppointments = patientAppointments.length
   const totalBilled = patientAppointments.reduce((sum, apt) => sum + (apt.price || 0), 0)
@@ -170,8 +393,8 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
   const TABS = [
     { key: 'info',      label: '👤 Información' },
     { key: 'history',   label: '📋 Historial' },
-    { key: 'notes',     label: '📝 Notas' },
-    { key: 'documents', label: '📎 Documentos' },
+    { key: 'notes',     label: `📝 Notas (${notas.length})` },
+    { key: 'documents', label: `📎 Documentos (${documents.length})` },
   ]
 
   return (
@@ -182,11 +405,31 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
         <h2 className="top-bar-title">
           {isEditing ? '✏️ Editar cliente' : `👤 ${patient.name}`}
         </h2>
-        {!isEditing && activeTab === 'info' && (
-          <button className="edit-btn" onClick={() => setIsEditing(true)}>
-            ✏️ Editar
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {!isEditing && activeTab === 'info' && (
+            <button className="edit-btn" onClick={() => setIsEditing(true)}>
+              ✏️ Editar
+            </button>
+          )}
+          {!isEditing && activeTab === 'info' && (
+            <button 
+              className="danger-btn" 
+              onClick={handleDeletePatient}
+              disabled={isDeleting}
+              style={{ 
+                padding: '9px 20px',
+                background: 'transparent',
+                border: '1px solid #ef4444',
+                borderRadius: '40px',
+                color: 'var(--accent-red)',
+                cursor: isDeleting ? 'wait' : 'pointer',
+                opacity: isDeleting ? 0.6 : 1
+              }}
+            >
+              {isDeleting ? '⏳ Eliminando...' : '🗑️ Eliminar'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Tabs ── */}
@@ -334,42 +577,112 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
             patient={patient}
             appointments={patientAppointments}
             onNavigate={nav.navigate}
+            onAddNote={guardarNotaDesdeHistorial}
           />
         </div>
       )}
 
-      {/* ── Tab: Notas ── */}
+      {/* ── Tab: Notas (CORREGIDO) ── */}
       {activeTab === 'notes' && !isEditing && (
         <div className="notes-section">
           <div className="notes-header">
             <h3>📝 Notas del cliente</h3>
+
+            {/* El botón aparece con 2 notas, no con 8: si tenés 7 y querés
+                borrar 5, el umbral alto te deja igual clic por clic. */}
+            {notas.length >= 2 && !modoSeleccion && (
+              <button className="btn-secondary" onClick={() => setModoSeleccion(true)}>
+                Seleccionar
+              </button>
+            )}
+
+            {modoSeleccion && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button className="btn-secondary" onClick={alternarTodas}>
+                  {notasElegidas.size === notas.length
+                    ? 'Ninguna' : 'Todas'}
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={borrarNotasElegidas}
+                  disabled={notasElegidas.size === 0}
+                  style={{
+                    background: notasElegidas.size ? 'var(--accent-red, #ef4444)' : undefined,
+                    opacity: notasElegidas.size ? 1 : 0.5,
+                    cursor: notasElegidas.size ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  🗑️ Eliminar{notasElegidas.size ? ` (${notasElegidas.size})` : ''}
+                </button>
+                <button className="btn-secondary" onClick={salirDeSeleccion}>
+                  Cancelar
+                </button>
+              </div>
+            )}
           </div>
-          
+
           <div className="notes-list">
-            {(patient.notes || []).length === 0 ? (
+            {notas.length === 0 ? (
               <div className="no-notes">
                 <span>📭</span>
                 <p>No hay notas</p>
                 <small>Agrega notas importantes sobre el cliente</small>
               </div>
             ) : (
-              (patient.notes || []).sort((a, b) => b.id - a.id).map(note => (
-                <div key={note.id} className="note-item">
-                  <div className="note-content">
-                    <p>{note.content}</p>
-                    <div className="note-meta">
-                      <span>📅 {note.dateFormatted || new Date(note.date).toLocaleString()}</span>
+              /* Se ordena por FECHA, no por id.
+                 Antes era `b.id - a.id`, pero los ids son strings desde que se
+                 usa newId(): la resta daba NaN y el orden quedaba al azar. */
+              [...notas]
+                .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                .map((note, i) => {
+                  const elegida = notasElegidas.has(String(note.id))
+                  return (
+                    <div
+                      key={note.id ?? `sin-id-${i}`}
+                      className="note-item"
+                      onClick={modoSeleccion ? () => alternarNota(note.id) : undefined}
+                      style={modoSeleccion ? {
+                        cursor: 'pointer',
+                        background: elegida ? 'rgba(244, 63, 94, 0.08)' : undefined,
+                      } : undefined}
+                    >
+                      {modoSeleccion && (
+                        <input
+                          type="checkbox"
+                          checked={elegida}
+                          onChange={() => alternarNota(note.id)}
+                          onClick={e => e.stopPropagation()}
+                          aria-label="Seleccionar nota"
+                          style={{ marginRight: 10, width: 18, height: 18, flexShrink: 0 }}
+                        />
+                      )}
+                      <div className="note-content">
+                        {/* Una nota sin texto se veía como una fila en blanco.
+                            Ahora se dice qué pasó en vez de no mostrar nada. */}
+                        {note.content
+                          ? <p>{note.content}</p>
+                          : <p className="note-vacia">Nota sin texto</p>}
+                        <div className="note-meta">
+                          <span>📅 {fechaDeNota(note)}</span>
+                          {note.heredada && (
+                            <span className="note-heredada" title="Venía guardada como texto suelto, de una versión anterior">
+                              heredada
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {!modoSeleccion && (
+                        <button
+                          className="delete-note"
+                          onClick={() => handleDeleteNote(note.id)}
+                          title="Eliminar nota"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
-                  </div>
-                  <button 
-                    className="delete-note"
-                    onClick={() => handleDeleteNote(note.id)}
-                    title="Eliminar nota"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))
+                  )
+                })
             )}
           </div>
 
@@ -431,7 +744,7 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
                     </button>
                     <button 
                       className="download-btn"
-                      onClick={() => downloadClientDocument(doc)}
+                      onClick={() => downloadClientDocument(doc, patient.id)}
                       title="Descargar"
                     >
                       📥

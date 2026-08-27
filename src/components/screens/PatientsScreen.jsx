@@ -10,11 +10,13 @@ import {
   exportPatientsToPDF,
   exportPatientsToExcel
 } from '../../utils/exportImport'
+import { ACTIVE_STATUSES } from '../../utils/constants'
+import { normalizarNotas, texto } from '../../utils/helpers'
 
 export function PatientsScreen({ nav, patients, addPatient, updatePatient, deletePatient, appointments }) {
   const focusRef = useScreenFocus()
   const toast = useToast()
-  const { confirm } = useConfirm() // CORREGIDO Bug 1: useConfirm descomentado
+  const { confirm } = useConfirm()
   
   const fileInputRef = useRef(null)
   
@@ -26,7 +28,7 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
     name: '', phone: '', email: '', birthDate: '', address: '', observations: '', attachments: [] 
   })
 
-  // CORREGIDO Bug 2: filtered con manejo de null/undefined
+  // Filtrar clientes
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase()
     return patients.filter(p => 
@@ -36,12 +38,70 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
     )
   }, [patients, searchQuery])
 
-  // CORREGIDO Bug 3: contador de pedidos usando patientId
+  // ========== FUNCIÓN PARA VERIFICAR PEDIDOS ASOCIADOS AL CLIENTE ==========
+  const verificarPedidosAsociados = useCallback((patientId, patientName) => {
+    const patientIdStr = String(patientId)
+    
+    // 1. Verificar en appointments (pedidos de agenda)
+    //
+    // FIX: antes esto contaba TODOS los pedidos — completados, entregados,
+    // cancelados, de hace tres años. Y el mensaje decía "eliminá o completá
+    // los pedidos primero", cosa que no servía de nada porque ya estaban
+    // completos. Cualquier cliente con historial quedaba imposible de borrar.
+    //
+    // También se sacó el fallback por nombre: hacía que dos personas que se
+    // llaman igual se bloquearan mutuamente. Sólo se usa si el pedido no tiene
+    // patientId, que es el caso de los que vienen de la web.
+    const pedidosEnAppointments = (appointments || []).filter(a => {
+      if (!ACTIVE_STATUSES.has(a.status)) return false
+      if (a.patientId) return String(a.patientId) === patientIdStr
+      return Boolean(a.patientName) && a.patientName === patientName
+    })
+    
+    // 2. Verificar en pedidos del Panel de Producción
+    let pedidosEnEmprendedor = []
+    try {
+      const saved = localStorage.getItem('zenday-emprendedor-pedidos')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          pedidosEnEmprendedor = parsed.filter(p => {
+            if (!p.cliente) return false
+            // Solo considerar pedidos no entregados
+            return p.cliente === patientName && p.estado !== 'ENTREGADO'
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[PatientsScreen] Error loading emprendedor pedidos:', e)
+    }
+    
+    const totalPedidos = pedidosEnAppointments.length + pedidosEnEmprendedor.length
+
+    // Las notas también cuentan: un cliente con notas guardadas no se borra
+    // sin que el usuario las vea primero. normalizarNotas porque los clientes
+    // creados por un pedido web tenían `notes` como string, y .length habría
+    // contado caracteres.
+    const cliente = (patients || []).find(p => String(p.id) === patientIdStr)
+    const cantidadNotas = normalizarNotas(cliente?.notes).length
+
+    return {
+      total: totalPedidos + cantidadNotas,
+      notas: cantidadNotas,
+      enAppointments: pedidosEnAppointments.length,
+      enEmprendedor: pedidosEnEmprendedor.length,
+      detalles: {
+        appointments: pedidosEnAppointments.map(a => ({ id: a.id, status: a.status, date: a.startTime })),
+        emprendedor: pedidosEnEmprendedor.map(p => ({ id: p.id, estado: p.estado, articulo: p.articuloNombre }))
+      }
+    }
+  }, [appointments, patients])
+
+  // Contador de pedidos para mostrar en la tarjeta
   const getPatientOrderCount = useCallback((patientId, patientName) => {
-    return appointments.filter(a => 
-      a.patientId === patientId || (a.patientName && a.patientName === patientName)
-    ).length
-  }, [appointments])
+    const pedidos = verificarPedidosAsociados(patientId, patientName)
+    return pedidos.total
+  }, [verificarPedidosAsociados])
 
   // ========== FUNCIONES DE GESTIÓN DE CLIENTES ==========
   
@@ -52,9 +112,14 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
   const isDuplicatePatient = (patientData, excludeId = null) => {
     return patients.some(p => {
       if (excludeId && p.id === excludeId) return false
-      const sameName = (p.name || '').toLowerCase().trim() === (patientData.name || '').toLowerCase().trim()
-      const samePhone = (patientData.phone && p.phone && p.phone.trim() === patientData.phone.trim())
-      const sameEmail = (patientData.email && p.email && p.email.toLowerCase().trim() === patientData.email.toLowerCase().trim())
+      // texto() en vez de .trim() directo. Un cliente importado de Excel puede
+      // tener el telefono como NUMERO (099412887 entra como 99412887), y
+      // `p.phone &&` lo deja pasar porque un numero es truthy. Ahi reventaba
+      // `.trim is not a function` -- adentro del guardado, sin cartel, y el
+      // cliente nuevo no se creaba nunca.
+      const sameName  = texto(p.name).toLowerCase()  === texto(patientData.name).toLowerCase()
+      const samePhone = texto(patientData.phone) !== '' && texto(p.phone) === texto(patientData.phone)
+      const sameEmail = texto(patientData.email) !== '' && texto(p.email).toLowerCase() === texto(patientData.email).toLowerCase()
       return sameName || samePhone || sameEmail
     })
   }
@@ -66,7 +131,6 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
     }
 
     if (editingPatient) {
-      // Verificar duplicados excluyendo el cliente actual
       if (isDuplicatePatient(formData, editingPatient.id)) {
         toast.addToast('⚠️ Ya existe un cliente con ese nombre, teléfono o email', 'warning')
         return
@@ -77,7 +141,6 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
       })
       toast.addToast('✅ Cliente actualizado', 'success')
     } else {
-      // Verificar duplicados
       if (isDuplicatePatient(formData)) {
         toast.addToast('⚠️ Ya existe un cliente con ese nombre, teléfono o email', 'warning')
         return
@@ -114,53 +177,59 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
     setShowForm(true)
   }
 
-  // CORREGIDO Bug 1: usar useConfirm en lugar de window.confirm
+  // ========== DELETE CLIENTE CON VALIDACIÓN DE PEDIDOS ASOCIADOS ==========
   const handleDelete = async (patient) => {
-    // Verificar citas pendientes
-    const futureAppointments = appointments.filter(apt => 
-      (apt.patientId === patient.id || apt.patientName === patient.name) && 
-      ['scheduled', 'confirmed', 'in-progress', 'pending'].includes(apt.status) &&
-      new Date(apt.startTime) >= new Date()
-    )
+    // Verificar pedidos asociados en ambos sistemas
+    const pedidos = verificarPedidosAsociados(patient.id, patient.name)
     
-    if (futureAppointments.length > 0) {
-      toast.addToast(`❌ No se puede eliminar: el cliente tiene ${futureAppointments.length} pedido(s) pendiente(s)`, 'error')
+    console.log('[PatientsScreen] Verificando cliente:', patient.name)
+    console.log('[PatientsScreen] Pedidos en appointments:', pedidos.enAppointments)
+    console.log('[PatientsScreen] Pedidos en emprendedor:', pedidos.enEmprendedor)
+    
+    if (pedidos.total > 0) {
+      // El mensaje enumera SÓLO lo que realmente bloquea, y termina con algo
+      // que el usuario pueda hacer. El anterior decía "eliminá o completá los
+      // pedidos" incluso cuando ya estaban todos completos.
+      const partes = []
+      if (pedidos.enAppointments > 0) partes.push(`📋 ${pedidos.enAppointments} en la agenda`)
+      if (pedidos.enEmprendedor > 0)  partes.push(`📦 ${pedidos.enEmprendedor} en producción`)
+      if (pedidos.notas > 0)          partes.push(`📝 ${pedidos.notas} nota(s)`)
+
+      toast.addToast(
+        `No se puede eliminar a "${patient.name}" todavía:\n` +
+        partes.join('\n') +
+        `\n\nAbrí el cliente y vaciá eso primero.`,
+        'error')
       return
     }
     
-    // Verificar citas pasadas
-    const pastAppointments = appointments.filter(apt => 
-      (apt.patientId === patient.id || apt.patientName === patient.name)
-    )
-    
-    const confirmMessage = pastAppointments.length > 0
-      ? `⚠️ ELIMINAR CLIENTE\n\n` +
-        `Cliente: ${patient.name}\n` +
-        `Teléfono: ${patient.phone || 'No registrado'}\n` +
-        `Email: ${patient.email || 'No registrado'}\n\n` +
-        `📊 Este cliente tiene ${pastAppointments.length} cita(s) en el historial.\n` +
-        `💰 ${pastAppointments.filter(a => a.paid).length} cita(s) pagadas.\n\n` +
-        `❗ Estas citas quedarán huérfanas en el sistema.\n\n` +
-        `¿Estás ABSOLUTAMENTE seguro de eliminar a este cliente?`
-      : `⚠️ ELIMINAR CLIENTE\n\n` +
-        `Cliente: ${patient.name}\n` +
-        `Teléfono: ${patient.phone || 'No registrado'}\n` +
-        `Email: ${patient.email || 'No registrado'}\n\n` +
-        `¿Estás seguro de eliminar a este cliente?`
+    // Si no tiene pedidos, mostrar confirmación normal
+    const confirmMessage = `⚠️ ELIMINAR CLIENTE\n\n` +
+      `Cliente: ${patient.name}\n` +
+      `Teléfono: ${patient.phone || 'No registrado'}\n` +
+      `Email: ${patient.email || 'No registrado'}\n\n` +
+      `¿Estás seguro de eliminar a este cliente?\n\n` +
+      `Esta acción no se puede deshacer.`
     
     const confirmed = await confirm(confirmMessage, 'Eliminar cliente')
     if (confirmed) {
-      deletePatient(patient.id)
+      // FIX: deletePatient devuelve false si el cliente tiene pedidos activos.
+      // Antes salía "🗑️ Cliente eliminado" con el cliente todavía en la lista.
+      if (await deletePatient(patient.id) === false) return
       toast.addToast('🗑️ Cliente eliminado', 'info')
     }
   }
 
-  // CORREGIDO Bug 4: handleOpenAttachment con electronAPI
-  const handleOpenAttachment = (file) => {
-    if (window.electronAPI?.openExternal) {
-      window.electronAPI.openExternal(file.data)
-    } else if (window.electronAPI?.openFile) {
-      window.electronAPI.openFile(file.data, file.name)
+  // Abrir adjunto
+  // FIX: probaba openExternal PRIMERO con un data: URL. shell.openExternal no
+  // abre data: URLs, y como openExternal siempre existe en Electron, la rama de
+  // openFile —la que sí funciona— nunca se ejecutaba. Los adjuntos de clientes
+  // no abrían nunca. Además el main.cjs nuevo rechaza explícitamente los
+  // esquemas que no son http/https/mailto/tel.
+  const handleOpenAttachment = async (file) => {
+    if (window.electronAPI?.openFile) {
+      const res = await window.electronAPI.openFile(file.data, file.name)
+      if (!res?.success) toast.addToast(res?.error || 'No se pudo abrir el archivo', 'error')
     } else {
       window.open(file.data, '_blank', 'noopener,noreferrer')
     }
@@ -194,7 +263,7 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
       }))
     }
     reader.readAsDataURL(file)
-    e.target.value = '' // Limpiar input
+    e.target.value = ''
   }
 
   const removeAttachment = (index) => {
@@ -221,8 +290,8 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
 
       result.patients.forEach(p => {
         const exists = patients.some(existing =>
-          (existing.name || '').toLowerCase().trim() === (p.name || '').toLowerCase().trim() ||
-          (p.phone && existing.phone && existing.phone.trim() === p.phone.trim())
+          texto(existing.name).toLowerCase() === texto(p.name).toLowerCase() ||
+          (texto(p.phone) !== '' && texto(existing.phone) === texto(p.phone))
         )
 
         if (exists) {
@@ -367,8 +436,8 @@ export function PatientsScreen({ nav, patients, addPatient, updatePatient, delet
               <circle cx="60" cy="45" r="20" fill="rgba(99,102,241,0.1)" />
               <circle cx="60" cy="40" r="16" fill="rgba(99,102,241,0.15)" />
               <path d="M30 80 Q60 60 90 80" stroke="rgba(99,102,241,0.2)" strokeWidth="3" fill="none" />
-              <circle cx="45" cy="35" r="4" fill="#6366f1" />
-              <circle cx="75" cy="35" r="4" fill="#6366f1" />
+              <circle cx="45" cy="35" r="4" fill="var(--accent-blue)" />
+              <circle cx="75" cy="35" r="4" fill="var(--accent-blue)" />
             </svg>
           </div>
           <h2>Comienza a gestionar tus clientes</h2>

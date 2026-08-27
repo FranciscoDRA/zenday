@@ -4,6 +4,8 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { todayKey } from './helpers'
+import { desglosePorMedio, etiquetaMedio } from './mediosDePago'
 
 // ─── PALETA DE COLORES ────────────────────────────────────────────────────────
 const COLORS = {
@@ -233,7 +235,11 @@ export function generateSalesReport({ appointments, startDate, endDate, business
 
     autoTable(doc, {
       startY: y,
-      head: [['Cliente', 'Producto/Servicio', 'Fecha', 'Monto', 'Estado']],
+      // La columna "Medio" faltaba: se podía marcar "cobré con débito" al
+      // cobrar y el dato no salía en ningún informe. Un campo que se pide y
+      // después no se puede consultar es trabajo que se le pide al usuario a
+      // cambio de nada.
+      head: [['Cliente', 'Producto/Servicio', 'Fecha', 'Monto', 'Medio', 'Estado']],
       body: completed
         .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
         .map(a => [
@@ -241,20 +247,27 @@ export function generateSalesReport({ appointments, startDate, endDate, business
           a.productName || a.serviceName || '—',
           formatDate(a.startTime),
           formatUYU(a.price || 0),
+          // Sólo tiene sentido el medio si está cobrado: en un pendiente,
+          // "Efectivo" sería una afirmación falsa sobre plata que no entró.
+          a.paid ? etiquetaMedio(a.paymentMethod) : '—',
           a.paid ? '✓ Pagado' : '⏳ Pendiente',
         ]),
       theme: 'striped',
       styles:       { fontSize: 8, cellPadding: 2.5 },
       headStyles:   { fillColor: COLORS.primary, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
+      // Suman 175mm; el ancho útil de un A4 vertical con márgenes de 14 es 182.
       columnStyles: {
-        0: { cellWidth: 40 },
-        1: { cellWidth: 50 },
-        2: { cellWidth: 25, halign: 'center' },
-        3: { cellWidth: 30, halign: 'right' },
-        4: { cellWidth: 30, halign: 'center' },
+        0: { cellWidth: 33 },
+        1: { cellWidth: 42 },
+        2: { cellWidth: 22, halign: 'center' },
+        3: { cellWidth: 28, halign: 'right' },
+        4: { cellWidth: 25, halign: 'center' },
+        5: { cellWidth: 25, halign: 'center' },
       },
       didParseCell: (data) => {
-        if (data.column.index === 4 && data.section === 'body') {
+        // OJO: el índice es 5, no 4. Al insertar "Medio" delante, "Estado" se
+        // corrió un lugar; dejarlo en 4 pintaba de verde el medio de pago.
+        if (data.column.index === 5 && data.section === 'body') {
           if (data.cell.raw === '✓ Pagado') {
             data.cell.styles.textColor = COLORS.secondary
             data.cell.styles.fontStyle = 'bold'
@@ -395,7 +408,7 @@ export function generateCustomersReport({ appointments, patients, startDate, end
 
 export function generateInventoryReport({ products, businessName }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayKey()   // en UTC daba manana despues de las 21:00
 
   const lowStock   = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) < 5)
   const outOfStock = products.filter(p => (p.stock || 0) === 0)
@@ -571,6 +584,66 @@ export function generateFinancialReport({ appointments, expenses = [], startDate
 
   y = doc.lastAutoTable.finalY + 10
 
+  // ── Cómo te pagaron ────────────────────────────────────────────────────────
+  //
+  // El estado de resultados de arriba dice CUÁNTO entró. Esto dice POR QUÉ VÍA,
+  // que es la mitad que faltaba: sirve para cuadrar el banco contra la caja,
+  // para ver cuánto se va en comisiones de tarjeta, y para saber si el negocio
+  // depende de una sola forma de cobro.
+  //
+  // Sale de `filteredApts`, la misma lista que ya usó el estado de resultados
+  // (`desglosePorMedio` sin rango filtra sólo por `paid`), así que el total de
+  // esta tabla da exacto la fila "Cobrado". Dos filtros parecidos pero
+  // separados terminan dando dos números distintos, y en un informe de plata
+  // eso no es un detalle.
+  const porMedioPago = desglosePorMedio(filteredApts)
+
+  if (porMedioPago.cantidad > 0) {
+    if (y > 200) { doc.addPage(); y = 20 }
+    y = drawSectionTitle(doc, 'Cómo te pagaron', y)
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Medio de pago', 'Cobros', 'Total', '% del cobrado']],
+      body: [
+        ...porMedioPago.porMedio.map(m => [
+          m.label,
+          m.cantidad.toString(),
+          formatUYU(m.monto),
+          `${porMedioPago.total > 0 ? ((m.monto / porMedioPago.total) * 100).toFixed(1) : '0.0'}%`,
+        ]),
+        [
+          { content: 'Efectivo (lo que pasó por la caja)', styles: { fontStyle: 'bold' } },
+          '',
+          { content: formatUYU(porMedioPago.enCaja), styles: { fontStyle: 'bold' } },
+          {
+            content: `${porMedioPago.total > 0 ? ((porMedioPago.enCaja / porMedioPago.total) * 100).toFixed(1) : '0.0'}%`,
+            styles: { fontStyle: 'bold' },
+          },
+        ],
+      ],
+      theme: 'striped',
+      styles:       { fontSize: 8, cellPadding: 2.5 },
+      headStyles:   { fillColor: COLORS.secondary, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 40, halign: 'right' },
+        3: { cellWidth: 35, halign: 'right' },
+      },
+      didParseCell: (data) => {
+        // La fila del efectivo es un subtotal, no un medio más: va separada
+        // para que nadie la sume dos veces al leer la tabla.
+        if (data.section === 'body' && data.row.index === porMedioPago.porMedio.length) {
+          data.cell.styles.fillColor = [240, 255, 245]
+        }
+      },
+      margin: { left: 14, right: 14 },
+    })
+
+    y = doc.lastAutoTable.finalY + 10
+  }
+
   // Detalle de gastos por categoría
   if (filteredExp.length > 0) {
     if (y > 200) { doc.addPage(); y = 20 }
@@ -636,4 +709,88 @@ export function generateFinancialReport({ appointments, expenses = [], startDate
 
   drawFooter(doc)
   doc.save(`reporte-financiero-${startDate}-al-${endDate}.pdf`)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COBROS PENDIENTES
+//
+// Antes esta hoja se armaba con html2pdf, que la pantalla bajaba EN CALIENTE
+// desde un CDN de cloudflare cada vez que apretabas el botón:
+//
+//     script.src = 'https://cdnjs.cloudflare.com/.../html2pdf.bundle.min.js'
+//
+// Tres problemas. Sin internet el botón no hacía nada (y en un consultorio eso
+// pasa). Dependía de que un servidor ajeno siguiera en pie y sirviendo el mismo
+// archivo. Y html2pdf saca una FOTO del HTML con html2canvas: el PDF salía
+// pesado, borroso al hacer zoom y con el texto no seleccionable — no se podía
+// ni buscar un nombre adentro.
+//
+// jsPDF + autoTable ya estaban instalados y son los que arman todos los demás
+// reportes. Esto reusa el mismo encabezado, los mismos colores y el mismo pie.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generatePendingPaymentsReport({ groupedByClient, totalPending, businessName }) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+  const grupos    = Array.isArray(groupedByClient) ? groupedByClient : []
+  const cantCitas = grupos.reduce((s, g) => s + (g.appointments?.length || 0), 0)
+
+  let y = drawHeader(doc, {
+    title: 'Cobros pendientes',
+    businessName,
+  })
+
+  y = drawKPICards(doc, [
+    { label: 'Total a cobrar', value: formatUYU(totalPending), color: COLORS.danger },
+    { label: 'Clientes',       value: grupos.length,           color: COLORS.primary },
+    { label: 'Citas impagas',  value: cantCitas,               color: COLORS.warning },
+  ], y)
+
+  if (grupos.length === 0) {
+    doc.setFontSize(11)
+    doc.setTextColor(...COLORS.gray)
+    doc.text('No hay cobros pendientes.', 14, y + 6)
+    drawFooter(doc)
+    doc.save(`cobros-pendientes-${todayKey()}.pdf`)
+    return true
+  }
+
+  for (const g of grupos) {
+    const contacto = [g.phone, g.email].filter(Boolean).join('  ·  ')
+    const titulo   = contacto ? `${g.name}   (${contacto})` : g.name
+
+    // Si lo que viene no entra en lo que queda de hoja, se pasa a la siguiente.
+    if (y > doc.internal.pageSize.getHeight() - 45) {
+      doc.addPage()
+      y = 20
+    }
+
+    y = drawSectionTitle(doc, titulo, y)
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Fecha', 'Detalle', 'Importe']],
+      body: (g.appointments || []).map(a => [
+        formatDate(a.startTime),
+        a.title || a.service || 'Cita',
+        formatUYU(a.price),
+      ]),
+      foot: [['', 'Subtotal', formatUYU(g.total)]],
+      theme: 'striped',
+      styles:     { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: COLORS.primary, textColor: COLORS.white, fontSize: 8 },
+      footStyles: { fillColor: COLORS.lightGray, textColor: COLORS.dark, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 26 },
+        2: { cellWidth: 30, halign: 'right' },
+      },
+      margin: { left: 14, right: 14 },
+    })
+
+    y = doc.lastAutoTable.finalY + 10
+  }
+
+  drawFooter(doc)
+  doc.save(`cobros-pendientes-${todayKey()}.pdf`)
+  return true
 }

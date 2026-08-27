@@ -33,6 +33,9 @@ export function NewAppointmentScreen({
       const d = new Date(selectedDate)
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     }
+    // El alta rápida ya manda 'YYYY-MM-DDTHH:mm:00' en hora local: se corta y
+    // listo. Pasarlo por new Date() sería volver a abrir la puerta al bug de UTC.
+    if (params?.prellenado?.startTime) return params.prellenado.startTime.slice(0, 10)
     if (params?.defaultDate) {
       const d = new Date(params.defaultDate)
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -42,20 +45,26 @@ export function NewAppointmentScreen({
   }
   
   const getInitialTime = () => {
+    if (params?.prellenado?.startTime) return params.prellenado.startTime.slice(11, 16)
     if (params?.defaultHour != null) {
       return `${String(params.defaultHour).padStart(2, '0')}:00`
     }
     return '10:00'
   }
   
+  // Lo que entendió el alta rápida de Ctrl+K. Llega ya interpretado: acá sólo
+  // se siembra el formulario. Los campos que no vinieron quedan como siempre,
+  // en blanco, para completarlos a mano — no se inventa nada.
+  const pre = params?.prellenado || null
+
   const [formData, setFormData] = useState({
-    patientId: '',
-    patientName: '',
+    patientId:    pre?.patientId   || '',
+    patientName:  pre?.patientName || '',
     patientPhone: '',
     patientEmail: '',
-    productId: '',
-    productName: '',
-    price: '',
+    productId:    pre?.productId   || '',
+    productName:  pre?.title       || '',
+    price:        pre?.price != null ? String(pre.price) : '',
     date: getInitialDate(),
     time: getInitialTime(),
     duration: consultationConfig?.defaultDuration || 60,
@@ -398,10 +407,15 @@ export function NewAppointmentScreen({
         }
       }
 
-      if (addMultipleAppointments) {
-        addMultipleAppointments(appointments)
-      } else {
-        appointments.forEach(apt => addAppointment(apt))
+      // FIX: si UNA sola repetición choca con otra cita, addMultipleAppointments
+      // devuelve false y no inserta ninguna. Antes se anunciaba éxito igual.
+      const creadas = addMultipleAppointments
+        ? addMultipleAppointments(appointments)
+        : appointments.every(apt => addAppointment(apt) !== false)
+
+      if (creadas === false) {
+        toast.addToast('❌ Alguna de las citas se superpone con otra existente. Revisá los horarios.', 'error')
+        return
       }
       toast.addToast(`✅ ${appointments.length} citas recurrentes creadas${formData.reminderEnabled ? ' con recordatorio' : ''}`, 'success')
 
@@ -412,7 +426,12 @@ export function NewAppointmentScreen({
         startTime: dateTime.toISOString(),
         endTime: endTime.toISOString()
       }
-      updateAppointment(effectiveEditingAppointment.id, updatedAppointment)
+      // updateAppointment devuelve false si hay solapamiento o no encuentra la
+      // cita, y ya avisa por su cuenta. Sin este chequeo salian los dos toasts
+      // pegados -- el rojo y el verde -- y se volvia atras como si hubiera
+      // andado. Las otras dos ramas de handleSave ya lo comprobaban.
+      const actualizada = updateAppointment(effectiveEditingAppointment.id, updatedAppointment)
+      if (actualizada === false) return
       
       if (formData.reminderEnabled) {
         createAppointmentReminder(updatedAppointment, dateTime)
@@ -428,8 +447,12 @@ export function NewAppointmentScreen({
         endTime: endTime.toISOString()
       }
       
-      addAppointment(newAppointment)
-      
+      const creada = addAppointment(newAppointment)
+      if (creada === false) {
+        toast.addToast('❌ Ya hay una cita en ese horario', 'error')
+        return
+      }
+
       if (formData.reminderEnabled) {
         createAppointmentReminder(newAppointment, dateTime)
         const advanceText = formData.reminderAdvance === 0 ? 'en el momento' : 
@@ -545,7 +568,7 @@ export function NewAppointmentScreen({
               style={{
                 marginTop: '12px',
                 padding: '8px 16px',
-                background: '#f59e0b',
+                background: 'var(--accent-amber)',
                 border: 'none',
                 borderRadius: '8px',
                 color: 'white',
@@ -564,7 +587,7 @@ export function NewAppointmentScreen({
               width: '100%', 
               padding: '12px', 
               borderRadius: '12px', 
-              border: '1px solid #e2e8f0', 
+              border: '1px solid var(--border)', 
               background: 'var(--bg-secondary)',
               fontSize: '16px'
             }}
@@ -592,7 +615,7 @@ export function NewAppointmentScreen({
           <select 
             value={formData.productId}
             onChange={(e) => handleProductSelect(e.target.value)}
-            style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+            style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
           >
             <option value="">Seleccionar artículo...</option>
             {products.map(p => (
@@ -610,7 +633,7 @@ export function NewAppointmentScreen({
         <select
           value={formData.duration}
           onChange={(e) => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         >
           <option value="15">15 minutos</option>
           <option value="30">30 minutos</option>
@@ -631,7 +654,7 @@ export function NewAppointmentScreen({
           type="date"
           value={formData.date}
           onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
         {formData.date && (
           <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
@@ -647,7 +670,7 @@ export function NewAppointmentScreen({
           type="time"
           value={formData.time}
           onChange={(e) => setFormData(prev => ({...prev, time: e.target.value}))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
         <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
           {formData.time && `Hora seleccionada: ${formattedTime}`}
@@ -661,7 +684,7 @@ export function NewAppointmentScreen({
           padding: '12px', 
           borderRadius: '12px', 
           background: 'rgba(16, 185, 129, 0.1)',
-          color: '#10b981',
+          color: 'var(--accent-green)',
           fontWeight: 600,
           fontSize: '18px'
         }}>
@@ -682,7 +705,7 @@ export function NewAppointmentScreen({
           placeholder="Ej: Consultorio 123, Av. Italia 456"
           value={formData.location}
           onChange={(e) => setFormData(prev => ({...prev, location: e.target.value}))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
       </div>
 
@@ -694,7 +717,7 @@ export function NewAppointmentScreen({
           placeholder="https://meet.google.com/... o https://zoom.us/j/..."
           value={formData.meetingLink}
           onChange={(e) => setFormData(prev => ({...prev, meetingLink: e.target.value}))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
         <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
           🔗 Se incluirá en el recordatorio y mensaje de WhatsApp
@@ -732,7 +755,7 @@ export function NewAppointmentScreen({
                   onClick={() => setFormData(prev => ({...prev, reminderAdvance: option.value}))}
                   style={{
                     padding: '8px 16px',
-                    background: formData.reminderAdvance === option.value ? '#6366f1' : 'var(--bg-secondary)',
+                    background: formData.reminderAdvance === option.value ? 'var(--accent-blue)' : 'var(--bg-secondary)',
                     border: '0.5px solid var(--border)',
                     borderRadius: '30px',
                     fontSize: '13px',
@@ -758,12 +781,12 @@ export function NewAppointmentScreen({
               <span style={{ fontWeight: 500 }}>📱 Enviar recordatorio por WhatsApp al cliente</span>
             </label>
             {formData.sendWhatsApp && !formData.patientPhone && (
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#ef4444' }}>
+              <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--accent-red)' }}>
                 ⚠️ El cliente no tiene número de teléfono registrado
               </div>
             )}
             {formData.sendWhatsApp && formData.patientPhone && (
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#10b981' }}>
+              <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--accent-green)' }}>
                 ✅ Se enviará WhatsApp a {formData.patientPhone}
               </div>
             )}
@@ -809,7 +832,7 @@ export function NewAppointmentScreen({
               <select 
                 value={formData.recurringPattern}
                 onChange={(e) => setFormData(prev => ({...prev, recurringPattern: e.target.value}))}
-                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+                style={{ padding: '10px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
               >
                 <option value="daily">📅 Cada día (máx 30)</option>
                 <option value="weekly">📆 Cada semana (máx 52)</option>
@@ -825,7 +848,7 @@ export function NewAppointmentScreen({
                   const max = formData.recurringPattern === 'daily' ? 30 : formData.recurringPattern === 'weekly' ? 52 : 12
                   setFormData(prev => ({...prev, recurringCount: isNaN(val) ? 1 : Math.max(1, Math.min(max, val))}))
                 }}
-                style={{ width: '80px', padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+                style={{ width: '80px', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
               />
               <span style={{ color: '#64748b' }}>veces</span>
             </div>
@@ -841,7 +864,7 @@ export function NewAppointmentScreen({
           placeholder="Observaciones adicionales..."
           value={formData.notes}
           onChange={(e) => setFormData(prev => ({...prev, notes: e.target.value}))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)', resize: 'vertical' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', resize: 'vertical' }}
         />
       </div>
 
@@ -851,7 +874,7 @@ export function NewAppointmentScreen({
         <select 
           value={formData.status}
           onChange={(e) => setFormData(prev => ({...prev, status: e.target.value}))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'var(--bg-secondary)' }}
+          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         >
           {userMode === 'entrepreneur' ? (
             <>
@@ -881,7 +904,7 @@ export function NewAppointmentScreen({
         marginTop: '32px',
         marginBottom: '20px',
         padding: '20px 0',
-        borderTop: '1px solid #e2e8f0',
+        borderTop: '1px solid var(--border)',
         background: 'var(--bg-primary)'
       }}>
         <button 

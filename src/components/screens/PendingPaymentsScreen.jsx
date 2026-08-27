@@ -1,9 +1,12 @@
 import React, { useMemo, useState, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { BackButton } from '../common/BackButton'
+import { PaymentDateModal } from '../common/PaymentDateModal'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
-import { formatDateTime, formatCurrency } from '../../utils/helpers'
+import { formatDateTime, formatCurrency, todayKey } from '../../utils/helpers'
+import { generatePendingPaymentsReport } from '../../utils/pdfReportGenerator'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
@@ -48,9 +51,24 @@ function loadJSONFromStorage(key, fallback) {
 function normalizeUruguayPhone(raw) {
   const digits = raw.replace(/\D/g, '')
   if (digits.startsWith('598')) return digits
-  if (digits.startsWith('0'))   return '598' + digits.slice(1)  // 09X → 598 9X
-  if (digits.startsWith('9'))   return '598' + digits            // 9X  → 598 9X
+  if (digits.startsWith('0'))   return '598' + digits.slice(1)
+  if (digits.startsWith('9'))   return '598' + digits
   return digits
+}
+
+/**
+ * Generar PDF de cobros pendientes.
+ *
+ * Antes esto bajaba html2pdf desde un CDN de cloudflare en el momento de
+ * apretar el boton, armaba un HTML completo a mano y le sacaba una foto.
+ * Sin internet no funcionaba, y el PDF salia como imagen: pesado y con el
+ * texto no seleccionable.
+ *
+ * Ahora lo arma jsPDF, que ya viene adentro del programa igual que los demas
+ * reportes. Anda sin internet y el texto se puede buscar y copiar.
+ */
+async function generatePDF(groupedByClient, totalPending) {
+  return generatePendingPaymentsReport({ groupedByClient, totalPending })
 }
 
 // ─── COMPONENTE ───────────────────────────────────────────────────────────────
@@ -66,7 +84,7 @@ export function PendingPaymentsScreen({
 }) {
   const focusRef = useScreenFocus()
   const toast    = useToast()
-  const confirm  = useConfirm()  // ✅ Dialogos consistentes
+  const { confirm } = useConfirm()
 
   // ── Template de mensaje ───────────────────────────────────────────────────
   const [prefix,  setPrefix]  = useState(() => loadFromStorage('reminder-prefix', DEFAULT_TEMPLATE.prefix))
@@ -83,6 +101,17 @@ export function PendingPaymentsScreen({
   const [showPaymentConfig, setShowPaymentConfig] = useState(false)
   const [isDeleting,        setIsDeleting]        = useState(false)
   const [deletingId,        setDeletingId]        = useState(null)
+  const [isExportingPDF,    setIsExportingPDF]    = useState(false)
+  
+  // ── Modal de fecha de pago ─────────────────────────────────────────────────
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [pendingPaymentApt, setPendingPaymentApt] = useState(null)
+  
+  // ── Modal para editar precio ───────────────────────────────────────────────
+  const [showEditPriceModal, setShowEditPriceModal] = useState(false)
+  const [editingAppointment, setEditingAppointment] = useState(null)
+  const [newPrice, setNewPrice] = useState('')
+  const [priceError, setPriceError] = useState('')
 
   // ── Pedidos pendientes ─────────────────────────────────────────────────────
   const pendingAppointments = useMemo(() =>
@@ -117,6 +146,53 @@ export function PendingPaymentsScreen({
     [groupedByClient]
   )
 
+  // ── Exportar a Excel ───────────────────────────────────────────────────────
+  const handleExportDeudores = useCallback(() => {
+    if (groupedByClient.length === 0) {
+      toast.addToast('No hay cobros pendientes', 'info')
+      return
+    }
+
+    const data = [
+      ['Cliente', 'Teléfono', 'Email', 'Producto', 'Fecha pedido', 'Monto pendiente'],
+      ...groupedByClient.flatMap(group =>
+        group.appointments.map(apt => [
+          group.name,
+          group.phone || 'Sin teléfono',
+          group.email || 'Sin email',
+          apt.productName || 'Sin producto',
+          new Date(apt.startTime).toLocaleDateString('es-UY'),
+          apt.price || 0
+        ])
+      )
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Cobros pendientes')
+    XLSX.writeFile(wb, `cobros-pendientes-${todayKey()}.xlsx`)
+    toast.addToast('📊 Excel exportado', 'success')
+  }, [groupedByClient, toast])
+
+  // ── Exportar a PDF ─────────────────────────────────────────────────────────
+  const handleExportPDF = useCallback(async () => {
+    if (groupedByClient.length === 0) {
+      toast.addToast('No hay cobros pendientes para exportar', 'info')
+      return
+    }
+
+    setIsExportingPDF(true)
+    try {
+      await generatePDF(groupedByClient, totalPending)
+      toast.addToast('📄 PDF generado correctamente', 'success')
+    } catch (error) {
+      console.error('[PendingPayments] Error exportando PDF:', error)
+      toast.addToast('❌ Error al generar el PDF', 'error')
+    } finally {
+      setIsExportingPDF(false)
+    }
+  }, [groupedByClient, totalPending, toast])
+
   // ── Construir mensaje ──────────────────────────────────────────────────────
   const buildMessage = useCallback((apt) => {
     let msg = `${prefix}${apt.patientName}${middle}${formatCurrency(apt.price, 'UYU')}${suffix}${formatDateTime(apt.startTime)}${ending}`
@@ -135,7 +211,7 @@ export function PendingPaymentsScreen({
     return msg
   }, [prefix, middle, suffix, ending, paymentConfig])
 
-  // ── Enviar WhatsApp (corregido: usa openExternal en Electron) ──────────────
+  // ── Enviar WhatsApp ────────────────────────────────────────────────────────
   const sendWhatsApp = useCallback((phone, message) => {
     const normalized = normalizeUruguayPhone(phone)
     const url = `https://api.whatsapp.com/send?phone=${normalized}&text=${encodeURIComponent(message)}`
@@ -156,32 +232,104 @@ export function PendingPaymentsScreen({
     toast.addToast('📱 Recordatorio enviado', 'success')
   }, [buildMessage, sendWhatsApp, toast])
 
-  // ── Marcar como pagado (con confirmación unificada) ────────────────────────
-  const handleMarkAsPaid = useCallback(async (apt) => {
-    const ok = await confirm(
-      `¿Confirmar pago de ${formatCurrency(apt.price, 'UYU')}?\nCliente: ${apt.patientName}`,
-      'Confirmar pago'
-    )
-    if (!ok) return
-    markAsPaid(apt.id)
-    toast.addToast('✅ Pago registrado', 'success')
-  }, [markAsPaid, toast, confirm])
+  // ── ABRIR MODAL PARA EDITAR PRECIO ─────────────────────────────────────────
+  const handleEditPrice = useCallback((apt) => {
+    setEditingAppointment(apt)
+    setNewPrice(String(apt.price || 0))
+    setPriceError('')
+    setShowEditPriceModal(true)
+  }, [])
 
-  // ── Eliminar pedido (con confirmación unificada) ───────────────────────────
+  // ── VALIDAR Y GUARDAR NUEVO PRECIO ─────────────────────────────────────────
+  const handleSavePrice = useCallback(async () => {
+    if (!editingAppointment) return
+    
+    // Validar que sea un número válido
+    const parsedPrice = parseFloat(newPrice)
+    if (isNaN(parsedPrice)) {
+      setPriceError('Ingrese un número válido')
+      return
+    }
+    
+    if (parsedPrice < 0) {
+      setPriceError('El precio no puede ser negativo')
+      return
+    }
+    
+    if (parsedPrice > 99999999) {
+      setPriceError('El precio es demasiado alto')
+      return
+    }
+    
+    // Confirmar cambio de precio
+    const oldPrice = editingAppointment.price || 0
+    const difference = parsedPrice - oldPrice
+    
+    let confirmMessage = `⚠️ CAMBIAR PRECIO DEL PEDIDO\n\n`
+    confirmMessage += `Cliente: ${editingAppointment.patientName}\n`
+    confirmMessage += `Producto: ${editingAppointment.productName || 'N/A'}\n`
+    confirmMessage += `Precio actual: ${formatCurrency(oldPrice, 'UYU')}\n`
+    confirmMessage += `Nuevo precio: ${formatCurrency(parsedPrice, 'UYU')}\n`
+    
+    if (difference !== 0) {
+      confirmMessage += `\n💸 Diferencia: ${difference > 0 ? '+' : ''}${formatCurrency(difference, 'UYU')}\n`
+    }
+    
+    confirmMessage += `\n¿Estás seguro de cambiar el precio?`
+    
+    const confirmed = await confirm(confirmMessage, 'Confirmar cambio de precio')
+    if (!confirmed) return
+    
+    // Actualizar el appointment en el estado
+    if (typeof setAppointments === 'function') {
+      setAppointments(prev => prev.map(a => 
+        String(a.id) === String(editingAppointment.id) 
+          ? { ...a, price: parsedPrice, originalPrice: oldPrice, priceUpdatedAt: new Date().toISOString() }
+          : a
+      ))
+    }
+    
+    toast.addToast(`💰 Precio actualizado: ${formatCurrency(oldPrice, 'UYU')} → ${formatCurrency(parsedPrice, 'UYU')}`, 'success')
+    setShowEditPriceModal(false)
+    setEditingAppointment(null)
+    setNewPrice('')
+  }, [editingAppointment, newPrice, setAppointments, confirm, toast])
+
+  // ── Marcar como pagado (ABRE MODAL) ────────────────────────────────────────
+  const handleMarkAsPaid = useCallback((apt) => {
+    setPendingPaymentApt(apt)
+    setShowPaymentModal(true)
+  }, [])
+
+  // ── Eliminar pedido ────────────────────────────────────────────────────────
   const handleDeleteAppointment = useCallback(async (apt) => {
     if (isDeleting) return
 
-    const ok = await confirm(
-      `⚠️ ¿ELIMINAR PEDIDO PENDIENTE?\n\nCliente: ${apt.patientName}\nProducto: ${apt.productName || 'N/A'}\nMonto: ${formatCurrency(apt.price, 'UYU')}\n\nEsta acción NO se puede deshacer.`,
-      'Confirmar eliminación'
-    )
-    if (!ok) return
+    // Si el pedido tiene precio, preguntar antes de eliminar
+    if (apt.price > 0) {
+      const confirmDelete = await confirm(
+        `⚠️ ¿ELIMINAR PEDIDO PENDIENTE?\n\n` +
+        `Cliente: ${apt.patientName}\n` +
+        `Producto: ${apt.productName || 'N/A'}\n` +
+        `Monto: ${formatCurrency(apt.price, 'UYU')}\n\n` +
+        `⚠️ ADVERTENCIA: Este pedido tiene un monto pendiente de cobro.\n` +
+        `Si lo eliminas, perderás el registro de esta deuda.\n\n` +
+        `¿Estás seguro de eliminar este pedido?`,
+        'Confirmar eliminación'
+      )
+      if (!confirmDelete) return
+    } else {
+      const ok = await confirm(
+        `⚠️ ¿ELIMINAR PEDIDO PENDIENTE?\n\nCliente: ${apt.patientName}\nProducto: ${apt.productName || 'N/A'}\nEsta acción NO se puede deshacer.`,
+        'Confirmar eliminación'
+      )
+      if (!ok) return
+    }
 
     setIsDeleting(true)
     setDeletingId(apt.id)
 
     try {
-      // 1. Devolver stock si corresponde
       if (apt.productId && setProducts) {
         setProducts(prev => {
           const idx = prev.findIndex(p => String(p.id) === String(apt.productId))
@@ -194,12 +342,12 @@ export function PendingPaymentsScreen({
         })
       }
 
-      // 2. Eliminar la cita
       if (typeof setAppointments === 'function') {
         setAppointments(prev => prev.filter(a => String(a.id) !== String(apt.id)))
         toast.addToast('🗑️ Pedido eliminado', 'success')
       } else if (typeof deleteAppointment === 'function') {
-        deleteAppointment(apt.id)
+        // FIX: si el borrado se rechaza, no seguir como si hubiera pasado.
+        if (await deleteAppointment(apt.id) === false) return
         toast.addToast('🗑️ Pedido eliminado', 'success')
       } else {
         toast.addToast('❌ Error: función de eliminación no disponible', 'error')
@@ -270,6 +418,29 @@ export function PendingPaymentsScreen({
             title="Personalizar mensaje"
           >
             ✏️
+          </button>
+          <button
+            onClick={handleExportDeudores}
+            style={{
+              padding: '8px 16px', borderRadius: '20px',
+              border: '1px solid var(--border)', background: 'transparent',
+              cursor: 'pointer', fontSize: '13px', fontWeight: 500
+            }}
+          >
+            📊 Exportar Excel
+          </button>
+          <button
+            onClick={handleExportPDF}
+            disabled={isExportingPDF}
+            style={{
+              padding: '8px 16px', borderRadius: '20px',
+              border: '1px solid var(--border)', background: 'transparent',
+              cursor: isExportingPDF ? 'wait' : 'pointer',
+              fontSize: '13px', fontWeight: 500,
+              opacity: isExportingPDF ? 0.6 : 1
+            }}
+          >
+            {isExportingPDF ? '⏳ Generando...' : '📄 Exportar PDF'}
           </button>
         </div>
       </div>
@@ -454,6 +625,21 @@ export function PendingPaymentsScreen({
                     </div>
                     <div className="order-row__actions">
                       <button
+                        className="btn-action btn-action--edit"
+                        onClick={() => handleEditPrice(apt)}
+                        title="Editar precio"
+                        style={{
+                          padding: '7px 10px',
+                          background: 'transparent',
+                          border: '1px solid var(--border)',
+                          borderRadius: '20px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ✏️ Precio
+                      </button>
+                      <button
                         className="btn-action btn-action--paid"
                         onClick={() => handleMarkAsPaid(apt)}
                       >
@@ -489,6 +675,96 @@ export function PendingPaymentsScreen({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal de selección de fecha de pago */}
+      {showPaymentModal && pendingPaymentApt && (
+        <PaymentDateModal
+          onConfirm={(date, metodo) => {
+            // FIX: registro de pago sin verificar. Si fallaba, el modal se
+            // cerraba y el cobro no quedaba registrado en ningún lado.
+            if (markAsPaid(pendingPaymentApt.id, date, metodo) === false) return
+            toast.addToast('✅ Pago registrado', 'success')
+            setShowPaymentModal(false)
+            setPendingPaymentApt(null)
+          }}
+          onCancel={() => {
+            setShowPaymentModal(false)
+            setPendingPaymentApt(null)
+          }}
+        />
+      )}
+
+      {/* Modal para editar precio del pedido */}
+      {showEditPriceModal && editingAppointment && (
+        <div className="modal-overlay" onClick={() => setShowEditPriceModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 450 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>✏️ Editar monto del pedido</h3>
+              <button className="modal-close" onClick={() => setShowEditPriceModal(false)}>✕</button>
+            </div>
+            
+            <div className="modal-body" style={{ padding: 20 }}>
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
+                  <strong>Cliente:</strong> {editingAppointment.patientName}
+                </p>
+                <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
+                  <strong>Producto:</strong> {editingAppointment.productName || 'N/A'}
+                </p>
+                <p style={{ marginBottom: 16, fontSize: 14, color: 'var(--text-secondary)' }}>
+                  <strong>Precio actual:</strong> {formatCurrency(editingAppointment.price, 'UYU')}
+                </p>
+              </div>
+              
+              <div className="form-group">
+                <label>💰 Nuevo monto a cobrar</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ 
+                    position: 'absolute', 
+                    left: '12px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)',
+                    color: 'var(--text-tertiary)'
+                  }}>$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={newPrice}
+                    onChange={(e) => {
+                      const valor = e.target.value.replace(/\./g, '').replace(/\s/g, '')
+                      setNewPrice(valor)
+                      setPriceError('')
+                    }}
+                    placeholder="Ingrese el monto final"
+                    style={{
+                      width: '100%',
+                      padding: '12px 12px 12px 28px',
+                      borderRadius: '10px',
+                      border: priceError ? '1.5px solid #ef4444' : '1.5px solid var(--border)',
+                      background: 'var(--bg-tertiary)',
+                      fontSize: '14px',
+                      fontFamily: 'monospace'
+                    }}
+                  />
+                </div>
+                {priceError && (
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--accent-red)' }}>
+                    ❌ {priceError}
+                  </div>
+                )}
+                <small style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                  💡 Podés quitar el costo de envío o ajustar el precio final según lo que pagó el cliente.
+                </small>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn--secondary" onClick={() => setShowEditPriceModal(false)}>Cancelar</button>
+              <button className="btn--primary" onClick={handleSavePrice}>Guardar cambio</button>
+            </div>
+          </div>
         </div>
       )}
 

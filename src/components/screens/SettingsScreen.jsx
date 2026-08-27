@@ -1,7 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { BackButton } from '../common/BackButton'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
+import { copiarAlPortapapeles } from '../../utils/helpers'
+import { armarReporte, ultimosErrores } from '../../utils/reporteDeErrores'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
 import { USER_MODES } from '../../utils/constants'
 import {
@@ -9,6 +11,7 @@ import {
   exportPatientsToExcel, exportProductsToExcel, exportAppointmentsToExcel,
   downloadPatientTemplate, downloadProductTemplate
 } from '../../utils/exportImport'
+import { leaveBusiness, joinBusiness } from '../../hooks/useBusinessId'
 
 // ─── CONSTANTES (fuera del componente) ───────────────────────────────────────
 
@@ -31,11 +34,11 @@ const SECTIONS = [
 ]
 
 const THEME_COLORS = [
-  { id: 'violet',  name: 'Violeta',    color: '#6366f1' },
+  { id: 'violet',  name: 'Violeta',    color: 'var(--accent-blue)' },
   { id: 'rose',    name: 'Rosa',       color: '#f43f5e' },
   { id: 'cyan',    name: 'Cyan',       color: '#06b6d4' },
-  { id: 'amber',   name: 'Ámbar',      color: '#f59e0b' },
-  { id: 'emerald', name: 'Esmeralda',  color: '#10b981' },
+  { id: 'amber',   name: 'Ámbar',      color: 'var(--accent-amber)' },
+  { id: 'emerald', name: 'Esmeralda',  color: 'var(--accent-green)' },
 ]
 
 const LICENSE_KEY_PATTERN = /^ZENDAY-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
@@ -93,28 +96,9 @@ const auditLog = (action, details, userId) => {
     logs.push(entry)
     if (logs.length > 1000) logs.shift()
     localStorage.setItem('audit-logs', JSON.stringify(logs))
-  } catch {}
+  } catch { /* sin espacio o storage no disponible: se descarta el log local */ }
   if (['LICENSE_ACTIVATE','LICENSE_DEACTIVATE','CONFIG_CHANGE','USER_ID_COPIED'].includes(action)) {
     window.electronAPI?.sendAuditLog?.(entry)?.catch?.(console.error)
-  }
-}
-
-const safeCopyToClipboard = async (text) => {
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-    const ta = document.createElement('textarea')
-    ta.value = text
-    Object.assign(ta.style, { position:'fixed', left:'-999999px', top:'-999999px' })
-    document.body.appendChild(ta)
-    ta.focus(); ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
   }
 }
 
@@ -123,7 +107,10 @@ const safeCopyToClipboard = async (text) => {
 function useDebounced(fn, delay) {
   const timer    = useRef(null)
   const fnRef    = useRef(fn)
-  fnRef.current  = fn            // siempre apunta a la versión más reciente
+
+  // Actualizar el ref en un efecto, no durante el render: mutar un ref
+  // mientras se renderiza es inseguro con las funciones concurrentes de React.
+  useEffect(() => { fnRef.current = fn }, [fn])
 
   return useCallback((...args) => {
     clearTimeout(timer.current)
@@ -139,10 +126,13 @@ export function SettingsScreen({
   consultationConfig, setConsultationConfig,
   patients, products, appointments,
   licenseStatus, onDeactivateLicense, onActivateLicense, user,
+  businessId, onBusinessChange,
+  cargarDatosDeEjemplo, borrarDatosDeEjemplo, cuantosEjemplos = 0,
+  appVersion,
 }) {
   const focusRef = useScreenFocus()
   const toast    = useToast()
-  const confirm  = useConfirm()
+  const { confirm }  = useConfirm()
 
   const [localWorkingHours, setLocalWorkingHours] = useState(workingHours)
   const [localConfig,       setLocalConfig]       = useState(consultationConfig)
@@ -151,9 +141,15 @@ export function SettingsScreen({
   const [showLicenseModal,  setShowLicenseModal]   = useState(false)
   const [newLicenseKey,     setNewLicenseKey]      = useState('')
   const [isActivating,      setIsActivating]       = useState(false)
-  // ← useState en vez de useRef para poder deshabilitar el botón visualmente
   const [isDeactivating,    setIsDeactivating]     = useState(false)
   const [isExporting,       setIsExporting]        = useState({})
+  
+  // Estados para gestión de negocio
+  const [showBusinessPanel, setShowBusinessPanel] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [leavingBusiness, setLeavingBusiness] = useState(false)
+  const [joiningCode, setJoiningCode] = useState('')
+  const [joinError, setJoinError] = useState('')
 
   const activationInProgress = useRef(false)
 
@@ -171,7 +167,6 @@ export function SettingsScreen({
     }
   }, [localWorkingHours, workingHours, consultationConfig, setWorkingHours, user, toast])
 
-  // Debounce apunta siempre a la versión más reciente de saveWorkingHours via ref
   const debouncedSave = useDebounced(saveWorkingHours, 1000)
 
   // ── Guardar config de negocio ──────────────────────────────────────────────
@@ -223,7 +218,7 @@ export function SettingsScreen({
     const ok = await confirm('⚠️ DESACTIVAR LICENCIA\n\nVolverás al modo de prueba.\n\n¿Deseás continuar?', 'Desactivar licencia')
     if (!ok) return
 
-    setIsDeactivating(true)  // ← estado, no ref → re-renderiza el botón
+    setIsDeactivating(true)
     try {
       const result = await onDeactivateLicense()
       if (result?.success) {
@@ -267,25 +262,109 @@ export function SettingsScreen({
   }, [isActivating, newLicenseKey, onActivateLicense, toast])
 
   // ── Clipboard ──────────────────────────────────────────────────────────────
+  // FIX: el ID se copiaba al portapapeles pero NUNCA se mostraba en pantalla.
+  // El usuario apretaba "Copiar ID", veía "✅ ID copiado" y un espacio en blanco:
+  // no podía verificar qué copió, ni leérselo a alguien por teléfono, ni
+  // enterarse si el portapapeles fallaba. Ahora se muestra siempre.
+  const [deviceId, setDeviceId] = useState('')
+
+  useEffect(() => {
+    let cancelado = false
+    ;(async () => {
+      try {
+        const id = await window.electronAPI?.getDeviceId?.()
+        if (!cancelado) setDeviceId(id || '')
+      } catch {
+        if (!cancelado) setDeviceId('')
+      }
+    })()
+    return () => { cancelado = true }
+  }, [])
+
   const handleCopyDeviceId = useCallback(async () => {
-    const id = await window.electronAPI?.getDeviceId?.()
+    const id = deviceId || await window.electronAPI?.getDeviceId?.()
     if (!id) { toast.addToast('❌ No se pudo obtener el ID del dispositivo', 'error'); return }
-    const ok = await safeCopyToClipboard(id)
-    toast.addToast(ok ? '✅ ID copiado' : '❌ Error al copiar el ID', ok ? 'success' : 'error')
-  }, [toast])
+    const ok = await copiarAlPortapapeles(id)
+    toast.addToast(ok ? '✅ ID copiado' : '❌ No se pudo copiar. Seleccionalo y copialo a mano.', ok ? 'success' : 'error')
+  }, [deviceId, toast])
 
   const handleCopyUserId = useCallback(async () => {
     if (!user?.uid) return
     const ok = await confirm('⚠️ El ID de usuario es información sensible.\n\nSolo compartilo con soporte técnico autorizado.\n\n¿Deseás continuar?', 'Copiar ID de usuario')
     if (!ok) return
-    const copied = await safeCopyToClipboard(user.uid)
+    const copied = await copiarAlPortapapeles(user.uid)
     if (copied) { auditLog('USER_ID_COPIED', { prefix: user.uid.slice(0,8)+'...' }, user.uid) }
     toast.addToast(copied ? '✅ ID copiado' : '❌ Error al copiar el ID', copied ? 'success' : 'error')
   }, [user, confirm, toast])
 
+  // ── Gestión de negocio ─────────────────────────────────────────────────────
+  // FIX: llamaba a navigator.clipboard.writeText sin await ni catch. Cuando el
+  // permiso está denegado eso deja un "Uncaught (in promise) NotAllowedError"
+  // en la consola, y encima marcaba "copiado" aunque no hubiera copiado nada.
+  const handleCopyCode = async () => {
+    const ok = await copiarAlPortapapeles(businessId)
+    if (!ok) {
+      toast.addToast('No se pudo copiar. Seleccioná el código y usá Ctrl+C.', 'error')
+      return
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Cargar no pregunta nada: no destruye nada y se deshace con un botón.
+  // Borrar sí pregunta, aunque sólo toque lo marcado como ejemplo: quien no
+  // sepa qué es un "dato de ejemplo" merece leerlo antes de apretar.
+  // El boton que convierte un "no anda" en algo que se puede arreglar.
+  //
+  // Un cliente no tiene DevTools ni sabe que existe una consola. Sin esto, lo
+  // unico que llega es "no funciona" y ahi se termina la conversacion. Con
+  // esto llega un texto que dice que fallo, cuando, en que version y en que
+  // modo — listo para pegar en un WhatsApp.
+  const reportarProblema = async () => {
+    const texto = armarReporte({
+      version: appVersion,
+      userMode,
+      plan: licenseStatus?.plan || licenseStatus?.status,
+    })
+    const ok = await copiarAlPortapapeles(texto)
+    toast.addToast(
+      ok ? '📋 Reporte copiado. Pegalo donde quieras mandarlo.'
+         : '❌ No se pudo copiar. Fijate en Configuración → Datos.',
+      ok ? 'success' : 'error')
+  }
+
+  const borrarEjemplos = async () => {
+    const ok = await confirm(
+      `Se borran ${cuantosEjemplos} registros de ejemplo.\n\nTus datos reales no se tocan.`,
+      'Borrar los datos de ejemplo'
+    )
+    if (ok) borrarDatosDeEjemplo?.()
+  }
+
+  // Usa el modal propio de la app, no el cartel del sistema operativo.
+  const handleLeaveBusiness = async () => {
+    const ok = await confirm(
+      '⚠️ Vas a perder acceso a los datos compartidos y se te creará un negocio propio vacío.\n\n¿Deseás continuar?',
+      'Salir del negocio actual'
+    )
+    if (!ok) return
+
+    setLeavingBusiness(true)
+    try {
+      const newId = await leaveBusiness(user, businessId)
+      localStorage.removeItem(`zenday-setup-done-${user.uid}`)
+      onBusinessChange(newId)
+      toast.addToast('✅ Saliste del negocio', 'success')
+    } catch (err) {
+      console.error('[Settings] Error al salir:', err)
+      toast.addToast('❌ Error al salir del negocio', 'error')
+    } finally {
+      setLeavingBusiness(false)
+    }
+  }
+
   // ── Exportar ───────────────────────────────────────────────────────────────
   const handleExport = useCallback(async (type, exportFn, ...args) => {
-    // Lee isExporting via setter funcional — sin tenerlo en dependencias
     setIsExporting(prev => {
       if (prev[type]) return prev
       return { ...prev, [type]: true }
@@ -300,7 +379,7 @@ export function SettingsScreen({
     } finally {
       setIsExporting(prev => ({ ...prev, [type]: false }))
     }
-  }, [toast])  // ← sin isExporting en dependencias
+  }, [toast])
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -412,7 +491,7 @@ export function SettingsScreen({
                       const val = e.target.value
                       setLocalWorkingHours(prev => {
                         const next = { ...prev, start: val }
-                        debouncedSave()   // debouncedSave siempre lee el estado más reciente
+                        debouncedSave()
                         return next
                       })
                     }}
@@ -483,8 +562,114 @@ export function SettingsScreen({
             <div className="settings-panel">
               <div className="panel-header">
                 <h2>Negocio</h2>
-                <p>Configuración de consultas y precios</p>
+                <p>Configuración de consultas, precios y gestión de equipo</p>
               </div>
+
+              {/* Sección de gestión del negocio */}
+              {user && businessId && (
+                <div className="settings-section">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px' }}>🏪 Mi negocio</h3>
+                    <button onClick={() => setShowBusinessPanel(v => !v)} style={{
+                      fontSize: '12px', padding: '4px 12px',
+                      borderRadius: '20px', border: '0.5px solid var(--border)',
+                      background: 'transparent', cursor: 'pointer'
+                    }}>
+                      {showBusinessPanel ? 'Ocultar' : 'Gestionar'}
+                    </button>
+                  </div>
+
+                  {showBusinessPanel && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      
+                      {/* Código actual */}
+                      <div style={{
+                        background: 'var(--bg-secondary)', borderRadius: '12px',
+                        padding: '16px', border: '1px solid var(--border)'
+                      }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '6px', fontWeight: 600 }}>
+                          📋 Código de tu negocio
+                        </div>
+                        <div style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'monospace',
+                          letterSpacing: '0.1em', marginBottom: '10px' }}>
+                          {businessId}
+                        </div>
+                        <button onClick={handleCopyCode} style={{
+                          width: '100%', padding: '8px',
+                          background: copied ? 'var(--accent-green)' : 'var(--accent-blue)',
+                          border: 'none', borderRadius: '8px',
+                          color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '13px'
+                        }}>
+                          {copied ? '✅ Copiado!' : '📋 Copiar para compartir'}
+                        </button>
+                      </div>
+
+                      {/* Unirse a otro negocio */}
+                      <div style={{
+                        background: 'var(--bg-secondary)', borderRadius: '12px',
+                        padding: '16px', border: '1px solid var(--border)'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>
+                          🤝 Unirme a otro negocio
+                        </div>
+                        <input
+                          type="text"
+                          value={joiningCode}
+                          onChange={e => setJoiningCode(e.target.value.toUpperCase())}
+                          placeholder="XXXX-XXXX-XXXX"
+                          style={{
+                            width: '100%', padding: '10px 14px',
+                            borderRadius: '10px', border: '1px solid var(--border)',
+                            background: 'var(--bg-primary)', fontSize: '14px',
+                            fontFamily: 'monospace', letterSpacing: '0.05em',
+                            marginBottom: '8px', boxSizing: 'border-box'
+                          }}
+                        />
+                        {joinError && (
+                          <p style={{ color: 'var(--accent-red)', fontSize: '12px', marginBottom: '8px' }}>
+                            ⚠️ {joinError}
+                          </p>
+                        )}
+                        <button
+                          onClick={async () => {
+                            if (!joiningCode.trim()) { setJoinError('Ingresá un código'); return }
+                            try {
+                              setJoinError('')
+                              const newId = await joinBusiness(user, joiningCode)
+                              localStorage.removeItem(`zenday-setup-done-${user.uid}`)
+                              onBusinessChange(newId)
+                              toast.addToast('✅ Te uniste al negocio', 'success')
+                              setJoiningCode('')
+                              setShowBusinessPanel(false)
+                            } catch (err) {
+                              setJoinError(err.message === 'INVALID_CODE' ? 'Código inválido' : 'Error al unirse')
+                            }
+                          }}
+                          style={{
+                            width: '100%', padding: '8px',
+                            background: 'var(--accent-green)', border: 'none', borderRadius: '8px',
+                            color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '13px'
+                          }}
+                        >
+                          Unirme
+                        </button>
+                      </div>
+
+                      {/* Salir del negocio */}
+                      <button onClick={handleLeaveBusiness} disabled={leavingBusiness} style={{
+                        width: '100%', padding: '10px',
+                        background: 'transparent', border: '1px solid #ef4444',
+                        borderRadius: '10px', color: 'var(--accent-red)',
+                        fontWeight: 500, cursor: 'pointer', fontSize: '13px'
+                      }}>
+                        {leavingBusiness ? '⏳ Saliendo...' : '🚪 Salir del negocio y crear el mío'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="divider" />
 
               <div className="setting-row">
                 <div className="setting-info">
@@ -571,9 +756,9 @@ export function SettingsScreen({
                   <span className="setting-hint">Situación actual de tu licencia</span>
                 </div>
                 <div className="license-status">
-                  {licenseStatus?.status === 'active'  && <span style={{ color:'#10b981', fontWeight:700 }}>✅ Activa — Plan {licenseStatus.plan === 'professional' ? 'Profesional' : 'Emprendedor'}</span>}
-                  {licenseStatus?.status === 'trial'   && <span style={{ color:'#f59e0b', fontWeight:700 }}>⏳ Trial — {licenseStatus.daysLeft} días restantes</span>}
-                  {licenseStatus?.status === 'expired' && <span style={{ color:'#ef4444', fontWeight:700 }}>❌ Expirada</span>}
+                  {licenseStatus?.status === 'active'  && <span style={{ color:'var(--accent-green)', fontWeight:700 }}>✅ Activa — Plan {licenseStatus.plan === 'professional' ? 'Profesional' : 'Emprendedor'}</span>}
+                  {licenseStatus?.status === 'trial'   && <span style={{ color:'var(--accent-amber)', fontWeight:700 }}>⏳ Trial — {licenseStatus.daysLeft} días restantes</span>}
+                  {licenseStatus?.status === 'expired' && <span style={{ color:'var(--accent-red)', fontWeight:700 }}>❌ Expirada</span>}
                 </div>
               </div>
 
@@ -598,7 +783,7 @@ export function SettingsScreen({
                       className="btn-secondary"
                       onClick={handleDeactivateLicense}
                       disabled={isDeactivating}
-                      style={{ color:'#ef4444', borderColor:'#ef4444', opacity: isDeactivating ? .6 : 1 }}
+                      style={{ color:'var(--accent-red)', borderColor:'var(--accent-red)', opacity: isDeactivating ? .6 : 1 }}
                     >
                       {isDeactivating ? 'Desactivando…' : '🗑️ Desactivar'}
                     </button>
@@ -621,7 +806,34 @@ export function SettingsScreen({
               <div className="setting-row">
                 <div className="setting-info">
                   <label>ID del dispositivo</label>
-                  <span className="setting-hint">Usá este ID para obtener una licencia</span>
+                  <span className="setting-hint">Pasale este ID a soporte para obtener tu licencia</span>
+                  {deviceId ? (
+                    <code
+                      onClick={(e) => {
+                        // Un clic selecciona todo: si el portapapeles falla,
+                        // el usuario igual puede copiarlo con Ctrl+C.
+                        const r = document.createRange()
+                        r.selectNodeContents(e.currentTarget)
+                        const sel = window.getSelection()
+                        sel.removeAllRanges()
+                        sel.addRange(r)
+                      }}
+                      title="Clic para seleccionar"
+                      style={{
+                        display: 'inline-block', marginTop: 8, padding: '7px 12px',
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm, 10px)', fontFamily: 'var(--font-mono, monospace)',
+                        fontSize: 14, letterSpacing: '0.08em', color: 'var(--text-primary)',
+                        userSelect: 'all', cursor: 'text',
+                      }}
+                    >
+                      {deviceId}
+                    </code>
+                  ) : (
+                    <span style={{ marginTop: 8, fontSize: 13, color: 'var(--text-tertiary)' }}>
+                      Cargando…
+                    </span>
+                  )}
                 </div>
                 <button className="btn-secondary" onClick={handleCopyDeviceId}>📋 Copiar ID</button>
               </div>
@@ -635,6 +847,27 @@ export function SettingsScreen({
                 <h2>Datos</h2>
                 <p>Exportá, importá y gestioná tu información</p>
               </div>
+
+              {/* Va PRIMERO a propósito: quien abre esta pantalla el primer día
+                  tiene la app vacía, y exportar una app vacía no sirve de nada.
+                  Esto es lo que necesita antes que cualquier otra cosa. */}
+              <div className="setting-row">
+                <div className="setting-info">
+                  <label>{cuantosEjemplos > 0 ? 'Datos de ejemplo cargados' : 'Ver ZenDay con datos'}</label>
+                  <span className="setting-hint">
+                    {cuantosEjemplos > 0
+                      ? `Hay ${cuantosEjemplos} registros de ejemplo. Se borran sin tocar los tuyos.`
+                      : 'Carga clientes, pedidos, artículos y gastos de mentira para ver el programa lleno.'}
+                  </span>
+                </div>
+                {cuantosEjemplos > 0 ? (
+                  <button onClick={borrarEjemplos}>🧹 Borrar los ejemplos</button>
+                ) : (
+                  <button onClick={() => cargarDatosDeEjemplo?.()}>✨ Cargar datos de ejemplo</button>
+                )}
+              </div>
+
+              <div className="divider" />
 
               <div className="data-grid">
                 {[
@@ -668,6 +901,21 @@ export function SettingsScreen({
                   <button onClick={downloadPatientTemplate}>Clientes</button>
                   <button onClick={downloadProductTemplate}>Artículos</button>
                 </div>
+              </div>
+
+              <div className="divider" />
+
+              <div className="setting-row">
+                <div className="setting-info">
+                  <label>¿Algo no funciona?</label>
+                  <span className="setting-hint">
+                    Copia al portapapeles qué falló, cuándo y con qué versión.
+                    {ultimosErrores().length > 0
+                      ? ` Hay ${ultimosErrores().length} error(es) registrado(s) en esta sesión.`
+                      : ' No se registró ningún error en esta sesión.'}
+                  </span>
+                </div>
+                <button onClick={reportarProblema}>🐞 Reportar problema</button>
               </div>
 
               <div className="divider" />

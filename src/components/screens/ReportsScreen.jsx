@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { BackButton } from '../common/BackButton'
 import { useToast } from '../../contexts/ToastContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
-import { formatCurrency } from '../../utils/helpers'
+import { formatCurrency, getRevenueDate } from '../../utils/helpers'
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -17,13 +17,16 @@ const MAX_DATE_RANGE_DAYS = 365
 const LOW_STOCK_THRESHOLD = 5
 const PAID_STATUSES       = new Set(['completed', 'delivered', 'picked'])
 
+// Perfiles disponibles
+const USER_MODES = {
+  PROFESSIONAL: 'professional',
+  ENTREPRENEUR: 'entrepreneur'
+}
+
 // ─── HELPERS DE FECHA ─────────────────────────────────────────────────────────
 
-/** "YYYY-MM-DD" → Date en hora LOCAL (evita el bug de UTC) */
-
-function getRevenueDate(a) {
-  return a.deliveredAt || a.paymentDate || a.startTime
-}
+// getRevenueDate vive en utils/helpers: las tres pantallas de plata tenian
+// su propia copia y NO coincidian. Ver el comentario alla.
 
 function parseDateLocal(str) {
   const [y, m, d] = str.split('-').map(Number)
@@ -50,7 +53,7 @@ function formatLocalDate(str) {
 
 // ─── COMPONENTE ───────────────────────────────────────────────────────────────
 
-export function ReportsScreen({ nav, appointments, products, patients }) {
+export function ReportsScreen({ nav, appointments, products, patients, userMode = 'professional' }) {
   const focusRef = useScreenFocus()
   const toast    = useToast()
 
@@ -63,6 +66,7 @@ export function ReportsScreen({ nav, appointments, products, patients }) {
   const [reportType,     setReportType]    = useState('sales')
   const [loading,        setLoading]       = useState(false)
   const [categoryFilter, setCategoryFilter]= useState('all')
+  const [selectedProfile, setSelectedProfile] = useState(userMode === 'entrepreneur' ? 'entrepreneur' : 'professional')
 
   // ── Validación ────────────────────────────────────────────────────────────
   const validateDateRange = useCallback(() => {
@@ -82,17 +86,30 @@ export function ReportsScreen({ nav, appointments, products, patients }) {
     return true
   }, [startDate, endDate, toast])
 
-  // ── Filtrado por rango ────────────────────────────────────────────────────
+  // ── Filtrar appointments por perfil ────────────────────────────────────────
+  const getAppointmentsByProfile = useCallback((profile) => {
+    if (profile === 'entrepreneur') {
+      // Modo Emprendedor: solo pedidos creados desde EmprendedorPanel
+      return appointments.filter(apt => apt.fromEmprendedor === true)
+    } else {
+      // Modo Profesional: pedidos de agenda normal (excluir los de emprendedor)
+      return appointments.filter(apt => apt.fromEmprendedor !== true)
+    }
+  }, [appointments])
+
+  // ── Filtrado por rango y perfil ────────────────────────────────────────────
   const filteredAppointments = useMemo(() => {
-    const start = parseDateLocal(startDate)                     // ← hora local
+    const start = parseDateLocal(startDate)
     const end   = new Date(parseDateLocal(endDate))
     end.setHours(23, 59, 59, 999)
 
-    return appointments.filter(apt => {
+    const appointmentsByProfile = getAppointmentsByProfile(selectedProfile)
+
+    return appointmentsByProfile.filter(apt => {
       const d = new Date(getRevenueDate(apt))
-return d >= start && d <= end
+      return d >= start && d <= end
     })
-  }, [appointments, startDate, endDate])
+  }, [startDate, endDate, selectedProfile, getAppointmentsByProfile])
 
   // ── Estadísticas de ventas ────────────────────────────────────────────────
   const salesStats = useMemo(() => {
@@ -105,7 +122,7 @@ return d >= start && d <= end
 
     const salesByDay = {}
     completed.forEach(apt => {
-     const day = getLocalDateKey(getRevenueDate(apt))
+      const day = getLocalDateKey(getRevenueDate(apt))
       if (!day) return
       if (!salesByDay[day]) salesByDay[day] = { paid: 0, pending: 0, total: 0 }
       if (apt.paid) salesByDay[day].paid    += apt.price || 0
@@ -113,13 +130,14 @@ return d >= start && d <= end
       salesByDay[day].total += apt.price || 0
     })
 
+    // CORREGIDO: productSales solo con cobrados (paid)
     const productSales = {}
-    completed.forEach(apt => {
+    paid.forEach(apt => {   // ← solo cobrados
       const name = apt.productName || 'Producto sin nombre'
       if (!productSales[name]) productSales[name] = { quantity: 0, revenue: 0, paid: 0 }
       productSales[name].quantity++
       productSales[name].revenue += apt.price || 0
-      if (apt.paid) productSales[name].paid += apt.price || 0
+      productSales[name].paid    += apt.price || 0
     })
 
     const topProducts = Object.entries(productSales)
@@ -152,29 +170,34 @@ return d >= start && d <= end
   [salesStats.salesByDay])
 
   // ── Estadísticas de clientes ──────────────────────────────────────────────
+  // CORREGIDO: customerStats solo con cobrados
   const customerStats = useMemo(() => {
     const byCustomer = {}
-    filteredAppointments.forEach(apt => {
-      const name = apt.patientName || 'Sin nombre'
-      if (!byCustomer[name]) byCustomer[name] = { orders: 0, spent: 0, paid: 0 }
-      byCustomer[name].orders++
-      byCustomer[name].spent += apt.price || 0
-      if (apt.paid) byCustomer[name].paid += apt.price || 0
-    })
+    // Solo appointments completados Y cobrados
+    filteredAppointments
+      .filter(a => PAID_STATUSES.has(a.status) && a.paid)
+      .forEach(apt => {
+        const name = apt.patientName || 'Sin nombre'
+        if (!byCustomer[name]) byCustomer[name] = { orders: 0, spent: 0, paid: 0 }
+        byCustomer[name].orders++
+        byCustomer[name].spent += apt.price || 0
+        byCustomer[name].paid += apt.price || 0
+      })
 
     const topCustomers = Object.entries(byCustomer)
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.spent - a.spent)
       .slice(0, 10)
 
-    // ← totalOrders estaba ausente — causaba que averageOrder siempre mostrara '$0'
     const completedCount = filteredAppointments.filter(a => PAID_STATUSES.has(a.status)).length
+    const paidCount = filteredAppointments.filter(a => PAID_STATUSES.has(a.status) && a.paid).length
 
     return {
       totalCustomers: Object.keys(byCustomer).length,
       topCustomers,
       totalOrders:   completedCount,
-      averageOrder:  completedCount > 0 ? salesStats.totalSales / completedCount : 0,
+      paidOrders:    paidCount,
+      averageOrder:  paidCount > 0 ? salesStats.totalSales / paidCount : 0,
     }
   }, [filteredAppointments, salesStats.totalSales])
 
@@ -207,10 +230,12 @@ return d >= start && d <= end
     const prevEnd   = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1)
     const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days)
 
-    const prevTotal = appointments
+    const appointmentsByProfile = getAppointmentsByProfile(selectedProfile)
+
+    const prevTotal = appointmentsByProfile
       .filter(a => {
         const d = new Date(getRevenueDate(a))
-      return d >= prevStart && d <= prevEnd && PAID_STATUSES.has(a.status) && a.paid
+        return d >= prevStart && d <= prevEnd && PAID_STATUSES.has(a.status) && a.paid
       })
       .reduce((s, a) => s + (a.price || 0), 0)
 
@@ -219,7 +244,7 @@ return d >= start && d <= end
       : ((salesStats.totalSales - prevTotal) / prevTotal) * 100
 
     return { prevTotalSales: prevTotal, change }
-  }, [appointments, startDate, endDate, salesStats.totalSales])
+  }, [startDate, endDate, salesStats.totalSales, selectedProfile, getAppointmentsByProfile])
 
   // ── Cambio de período rápido ──────────────────────────────────────────────
   const handleDateRangeChange = useCallback((range) => {
@@ -252,7 +277,8 @@ return d >= start && d <= end
       doc.text('ZenDay', pw/2, 20, { align:'center' })
 
       doc.setFontSize(18); doc.setTextColor(0,0,0)
-      doc.text(`Reporte de ${reportType === 'sales' ? 'Ventas' : reportType === 'customers' ? 'Clientes' : 'Stock'}`, pw/2, 35, { align:'center' })
+      const perfilTexto = selectedProfile === 'entrepreneur' ? 'Emprendedor' : 'Profesional'
+      doc.text(`Reporte de ${reportType === 'sales' ? 'Ventas' : reportType === 'customers' ? 'Clientes' : 'Stock'} - ${perfilTexto}`, pw/2, 35, { align:'center' })
 
       doc.setFontSize(10); doc.setTextColor(100,100,100)
       doc.text(`Período: ${formatLocalDate(startDate)} al ${formatLocalDate(endDate)}`, pw/2, 45, { align:'center' })
@@ -267,12 +293,12 @@ return d >= start && d <= end
         autoTable(doc, {
           startY: y,
           body: [
-            ['Total ventas',          formatCurrency(salesStats.totalSales, 'UYU')],
-            ['Pendiente de cobro',    formatCurrency(salesStats.totalPending, 'UYU')],
-            ['Total pedidos',         salesStats.totalOrders.toString()],
-            ['Pedidos pagados',       salesStats.paidCount.toString()],
-            ['Pedidos pendientes',    salesStats.pendingCount.toString()],
-            ['Variación vs anterior', `${previousPeriodStats.change > 0 ? '+' : ''}${previousPeriodStats.change.toFixed(1)}%`],
+            ['Total ventas (cobrado)',    formatCurrency(salesStats.totalSales, 'UYU')],
+            ['Pendiente de cobro',        formatCurrency(salesStats.totalPending, 'UYU')],
+            ['Total pedidos',             salesStats.totalOrders.toString()],
+            ['Pedidos pagados',           salesStats.paidCount.toString()],
+            ['Pedidos pendientes',        salesStats.pendingCount.toString()],
+            ['Variación vs anterior',     `${previousPeriodStats.change > 0 ? '+' : ''}${previousPeriodStats.change.toFixed(1)}%`],
           ],
           theme:'striped', styles:{ fontSize:10 },
           columnStyles:{ 0:{ fontStyle:'bold' } },
@@ -281,7 +307,7 @@ return d >= start && d <= end
         y = doc.lastAutoTable.finalY + 15
 
         if (salesStats.topProducts.length > 0) {
-          doc.text('Top productos más vendidos', 14, y); y += 5
+          doc.text('Top productos más vendidos (solo cobrados)', 14, y); y += 5
           autoTable(doc, {
             startY: y,
             head: [['Producto','Cantidad','Ingresos']],
@@ -322,7 +348,7 @@ return d >= start && d <= end
         }
       }
 
-      doc.save(`reporte_${reportType}_${startDate}_al_${endDate}.pdf`)
+      doc.save(`reporte_${reportType}_${selectedProfile}_${startDate}_al_${endDate}.pdf`)
       toast.addToast('📄 Reporte PDF generado', 'success')
     } catch (err) {
       console.error('[Reports] PDF error:', err)
@@ -330,41 +356,51 @@ return d >= start && d <= end
     } finally {
       setLoading(false)
     }
-  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, validateDateRange, toast])
+  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
 
   // ── Exportar Excel ────────────────────────────────────────────────────────
   const exportToExcel = useCallback(() => {
     if (!validateDateRange()) return
 
     let data = []
+    const perfilTexto = selectedProfile === 'entrepreneur' ? 'Emprendedor' : 'Profesional'
+
     if (reportType === 'sales') {
       data = [
+        [`Reporte de Ventas - ${perfilTexto}`],
+        [`Período: ${formatLocalDate(startDate)} al ${formatLocalDate(endDate)}`],
+        [],
         ['Resumen de Ventas'],
         ['Concepto','Valor'],
-        ['Total ventas',          formatCurrency(salesStats.totalSales,'UYU')],
-        ['Pendiente de cobro',    formatCurrency(salesStats.totalPending,'UYU')],
-        ['Total pedidos',         salesStats.totalOrders],
-        ['Pedidos pagados',       salesStats.paidCount],
-        ['Pedidos pendientes',    salesStats.pendingCount],
-        ['Variación vs anterior', `${previousPeriodStats.change > 0 ? '+' : ''}${previousPeriodStats.change.toFixed(1)}%`],
+        ['Total ventas (cobrado)',    formatCurrency(salesStats.totalSales,'UYU')],
+        ['Pendiente de cobro',        formatCurrency(salesStats.totalPending,'UYU')],
+        ['Total pedidos',             salesStats.totalOrders],
+        ['Pedidos pagados',           salesStats.paidCount],
+        ['Pedidos pendientes',        salesStats.pendingCount],
+        ['Variación vs anterior',     `${previousPeriodStats.change > 0 ? '+' : ''}${previousPeriodStats.change.toFixed(1)}%`],
         [],
-        ['Top Productos'],
+        ['Top Productos (solo cobrados)'],
         ['Producto','Cantidad','Ingresos'],
         ...salesStats.topProducts.map(p => [p.name, p.quantity, formatCurrency(p.revenue,'UYU')]),
       ]
     } else if (reportType === 'customers') {
       data = [
+        [`Reporte de Clientes - ${perfilTexto}`],
+        [`Período: ${formatLocalDate(startDate)} al ${formatLocalDate(endDate)}`],
+        [],
         ['Resumen de Clientes'],
         ['Concepto','Valor'],
-        ['Total clientes activos', customerStats.totalCustomers],
-        ['Ticket promedio',        formatCurrency(customerStats.averageOrder,'UYU')],
+        ['Total clientes activos',    customerStats.totalCustomers],
+        ['Ticket promedio (cobrado)', formatCurrency(customerStats.averageOrder,'UYU')],
         [],
-        ['Top Clientes'],
+        ['Top Clientes (por gasto cobrado)'],
         ['Cliente','Pedidos','Gastado'],
         ...customerStats.topCustomers.map(c => [c.name, c.orders, formatCurrency(c.spent,'UYU')]),
       ]
     } else {
       data = [
+        [`Reporte de Inventario - ${perfilTexto}`],
+        [],
         ['Resumen de Inventario'],
         ['Concepto','Valor'],
         ['Total productos',          stockStats.totalProducts],
@@ -384,10 +420,10 @@ return d >= start && d <= end
 
     const ws = XLSX.utils.aoa_to_sheet(data)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `Reporte_${reportType}`)
-    XLSX.writeFile(wb, `reporte_${reportType}_${startDate}_al_${endDate}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, `Reporte_${reportType}_${selectedProfile}`)
+    XLSX.writeFile(wb, `reporte_${reportType}_${selectedProfile}_${startDate}_al_${endDate}.xlsx`)
     toast.addToast('📊 Reporte Excel generado', 'success')
-  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, validateDateRange, toast])
+  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
 
   const trendClass = previousPeriodStats.change > 0 ? 'positive' : previousPeriodStats.change < 0 ? 'negative' : 'neutral'
   const trendIcon  = previousPeriodStats.change > 0 ? '↑' : previousPeriodStats.change < 0 ? '↓' : '→'
@@ -399,6 +435,52 @@ return d >= start && d <= end
         <BackButton onClick={() => nav.goBack()} />
         <h2 className="top-bar-title">📊 Reportes</h2>
       </div>
+
+      {/* Selector de perfil */}
+      {userMode === 'master' && (
+        <div className="profile-selector" style={{
+          display: 'flex', gap: '12px', padding: '16px 24px',
+          background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)'
+        }}>
+          <span style={{ fontWeight: 500, marginRight: '8px' }}>👥 Ver reportes de:</span>
+          <button
+            className={`profile-btn ${selectedProfile === 'professional' ? 'active' : ''}`}
+            onClick={() => setSelectedProfile('professional')}
+            style={{
+              padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)',
+              background: selectedProfile === 'professional' ? 'var(--accent-blue)' : 'transparent',
+              color: selectedProfile === 'professional' ? 'white' : 'var(--text-primary)',
+              cursor: 'pointer', fontFamily: 'inherit'
+            }}
+          >
+            💼 Profesional
+          </button>
+          <button
+            className={`profile-btn ${selectedProfile === 'entrepreneur' ? 'active' : ''}`}
+            onClick={() => setSelectedProfile('entrepreneur')}
+            style={{
+              padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)',
+              background: selectedProfile === 'entrepreneur' ? 'var(--accent-green)' : 'transparent',
+              color: selectedProfile === 'entrepreneur' ? 'white' : 'var(--text-primary)',
+              cursor: 'pointer', fontFamily: 'inherit'
+            }}
+          >
+            📦 Emprendedor
+          </button>
+        </div>
+      )}
+
+      {/* Badge del perfil actual si no es master */}
+      {userMode !== 'master' && (
+        <div className="current-profile-badge" style={{
+          padding: '12px 24px', background: userMode === 'entrepreneur' ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.1)',
+          borderBottom: `1px solid ${userMode === 'entrepreneur' ? 'rgba(16,185,129,0.2)' : 'rgba(99,102,241,0.2)'}`
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: 500 }}>
+            {userMode === 'entrepreneur' ? '📦 Modo Emprendedor' : '💼 Modo Profesional'}
+          </span>
+        </div>
+      )}
 
       {/* Tipo de reporte */}
       <div className="report-type-selector">
@@ -457,7 +539,7 @@ return d >= start && d <= end
               <div className="kpi-icon">💰</div>
               <div className="kpi-info">
                 <span className="kpi-value">{formatCurrency(salesStats.totalSales, 'UYU')}</span>
-                <span className="kpi-label">Ventas totales</span>
+                <span className="kpi-label">Ventas totales (cobrado)</span>
                 <span className={`trend ${trendClass}`}>
                   {trendIcon} {Math.abs(previousPeriodStats.change).toFixed(1)}%
                 </span>
@@ -495,15 +577,15 @@ return d >= start && d <= end
                   <YAxis tickFormatter={v => `$${v}`} stroke="var(--text-tertiary)" fontSize={12} />
                   <Tooltip formatter={v => formatCurrency(v, 'UYU')} />
                   <Legend />
-                  <Line type="monotone" dataKey="ventas"  name="Ventas"  stroke="#6366f1" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="cobrado" name="Cobrado" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="ventas"  name="Ventas"  stroke="var(--accent-blue)" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="cobrado" name="Cobrado" stroke="var(--accent-green)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           )}
 
           <div className="report-section">
-            <h3>🏆 Top productos más vendidos</h3>
+            <h3>🏆 Top productos más vendidos (solo cobrados)</h3>
             <div className="top-products-list">
               {salesStats.topProducts.length === 0 ? (
                 <div className="empty-message">No hay datos en este período</div>
@@ -536,15 +618,14 @@ return d >= start && d <= end
             <div className="kpi-card">
               <div className="kpi-icon">💵</div>
               <div className="kpi-info">
-                {/* ← ahora usa customerStats.totalOrders que SÍ existe */}
                 <span className="kpi-value">{formatCurrency(customerStats.averageOrder, 'UYU')}</span>
-                <span className="kpi-label">Ticket promedio</span>
+                <span className="kpi-label">Ticket promedio (cobrado)</span>
               </div>
             </div>
           </div>
 
           <div className="report-section">
-            <h3>🏆 Top clientes</h3>
+            <h3>🏆 Top clientes (por gasto cobrado)</h3>
             <div className="top-customers-list">
               {customerStats.topCustomers.length === 0 ? (
                 <div className="empty-message">No hay datos en este período</div>

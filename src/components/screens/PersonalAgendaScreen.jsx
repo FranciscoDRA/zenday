@@ -2,15 +2,29 @@ import React, { useState, useMemo, useReducer, useCallback } from 'react'
 import { BackButton } from '../common/BackButton'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
 import { useToast } from '../../contexts/ToastContext'
+import { newId, toLocalDateKey } from '../../utils/helpers'
+import { useConfirm } from '../../contexts/ConfirmContext'
+
+/** ISO (UTC) -> { date: 'YYYY-MM-DD', time: 'HH:MM' } en hora LOCAL. */
+function splitLocal(iso) {
+  if (!iso) return { date: '', time: '' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { date: '', time: '' }
+  const p = n => String(n).padStart(2, '0')
+  return {
+    date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+    time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+  }
+}
 
 // ─── CONSTANTES ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { id: 'health',   label: '🏃 Salud',      color: '#10b981' },
+  { id: 'health',   label: '🏃 Salud',      color: 'var(--accent-green)' },
   { id: 'work',     label: '💼 Trabajo',     color: '#3b82f6' },
   { id: 'social',   label: '🎉 Social',      color: '#ec4899' },
-  { id: 'home',     label: '🏠 Hogar',       color: '#f59e0b' },
+  { id: 'home',     label: '🏠 Hogar',       color: 'var(--accent-amber)' },
   { id: 'study',    label: '📚 Estudio',     color: '#8b5cf6' },
-  { id: 'finance',  label: '💰 Finanzas',    color: '#22c55e' },
+  { id: 'finance',  label: '💰 Finanzas',    color: 'var(--accent-green)' },
   { id: 'other',    label: '✨ Otro',         color: '#6b7280' },
 ]
 
@@ -42,13 +56,18 @@ const EMPTY_FORM = { title: '', category: 'other', date: '', time: '', duration:
 
 function EventForm({ initial = EMPTY_FORM, onSave, onCancel }) {
   const [form, setForm] = useState(initial)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const [error, setError] = useState('')
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); if (error) setError('') }
   const cat = CAT_MAP[form.category]
 
   const handleSubmit = () => {
-    if (!form.title.trim()) return
-    if (!form.allDay && (!form.date || !form.time)) return
-    if (form.allDay && !form.date) return
+    // FIX: las tres validaciones eran `return` pelados, sin ningún feedback.
+    // Apretabas "Guardar evento" sin título y no pasaba nada: ni se guardaba,
+    // ni se cerraba, ni aparecía un mensaje. Parecía que el botón estaba roto.
+    if (!form.title.trim())                          return setError('Poné un título al evento')
+    if (form.allDay && !form.date)                   return setError('Elegí una fecha')
+    if (!form.allDay && (!form.date || !form.time))  return setError('Elegí fecha y hora')
+    setError('')
     onSave(form)
   }
 
@@ -71,6 +90,16 @@ function EventForm({ initial = EMPTY_FORM, onSave, onCancel }) {
           }}
         />
       </div>
+
+      {error && (
+        <div style={{
+          marginBottom: 12, padding: '9px 13px', borderRadius: 10,
+          background: 'rgba(244,63,94,0.12)', border: '1px solid var(--accent-red)',
+          color: 'var(--accent-red)', fontSize: 13, fontWeight: 500,
+        }}>
+          {error}
+        </div>
+      )}
 
       {/* Categoría */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -214,6 +243,7 @@ function EventCard({ event, onEdit, onDelete }) {
 export function PersonalAgendaScreen({ nav }) {
   const focusRef = useScreenFocus()
   const toast    = useToast()
+  const { confirm } = useConfirm()
   const [events, dispatch] = useReducer(eventsReducer, null, initEvents)
   const [view, setView]    = useState('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -242,8 +272,13 @@ export function PersonalAgendaScreen({ nav }) {
       days.push({ date: new Date(y, m - 1, new Date(y, m, 0).getDate() - i), isCurrentMonth: false })
     for (let i = 1; i <= new Date(y, m + 1, 0).getDate(); i++)
       days.push({ date: new Date(y, m, i), isCurrentMonth: true })
+    // FIX: usaba `days.length - diasDelMes` como número de día, que da el
+    // offset y no 1. En agosto 2026 la grilla mostraba 30, 31, 5, 6, 7… — se
+    // salteaba del 1 al 4 de septiembre y los clicks iban al día equivocado.
+    // Sólo funcionaba de casualidad cuando el mes arrancaba lunes.
+    let siguiente = 1
     while (days.length < 42)
-      days.push({ date: new Date(y, m + 1, days.length - new Date(y, m + 1, 0).getDate()), isCurrentMonth: false })
+      days.push({ date: new Date(y, m + 1, siguiente++), isCurrentMonth: false })
     return days
   }, [selectedDate])
 
@@ -277,18 +312,19 @@ export function PersonalAgendaScreen({ nav }) {
       toast.addToast('✅ Evento actualizado', 'success')
       setEditingEvent(null)
     } else {
-      dispatch({ type: 'ADD', payload: { id: Date.now(), ...form, startTime, isPersonal: true, createdAt: new Date().toISOString() } })
+      dispatch({ type: 'ADD', payload: { id: newId(), ...form, startTime, isPersonal: true, createdAt: new Date().toISOString() } })
       toast.addToast('✅ Evento creado', 'success')
       setShowForm(false)
     }
   }, [editingEvent, toast])
 
-  const handleDelete = useCallback((id) => {
-    if (!window.confirm('¿Eliminar este evento?')) return
+  const handleDelete = useCallback(async (id) => {
+    const ok = await confirm('¿Eliminar este evento?', 'Eliminar evento')
+    if (!ok) return
     dispatch({ type: 'DELETE', id })
     toast.addToast('🗑️ Evento eliminado', 'info')
     setEditingEvent(null)
-  }, [toast])
+  }, [toast, confirm])
 
   // ── Estadísticas ─────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -315,7 +351,10 @@ export function PersonalAgendaScreen({ nav }) {
         ) : (
           dayEvs.map(e => (
             editingEvent?.id === e.id
-              ? <EventForm key={e.id} initial={{ ...e, date: e.startTime?.split('T')[0], time: e.startTime?.split('T')[1]?.slice(0,5) || '' }}
+              // FIX: startTime se guarda como ISO UTC, pero acá se partía como
+              // si fuera hora local. Un evento de las 09:00 abría en 12:00 y, al
+              // guardar, quedaba a las 12:00. Cada edición lo corría 3 horas más.
+              ? <EventForm key={e.id} initial={{ ...e, ...splitLocal(e.startTime) }}
                   onSave={handleSave} onCancel={() => setEditingEvent(null)} />
               : <EventCard key={e.id} event={e} onEdit={setEditingEvent} onDelete={handleDelete} />
           ))
@@ -377,7 +416,7 @@ export function PersonalAgendaScreen({ nav }) {
         const k = new Date(e.startTime).toDateString()
         if (!byDate[k]) byDate[k] = []
         byDate[k].push(e)
-      } catch {}
+      } catch { /* fecha inválida: se descarta ese evento */ }
     })
 
     return (
@@ -466,7 +505,7 @@ export function PersonalAgendaScreen({ nav }) {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { label: 'Hoy',        value: stats.today,    color: '#3b82f6' },
-          { label: 'Próximos',   value: stats.upcoming, color: '#10b981' },
+          { label: 'Próximos',   value: stats.upcoming, color: 'var(--accent-green)' },
           { label: 'Total',      value: stats.total,    color: '#8b5cf6' },
         ].map(s => (
           <div key={s.label} style={{
@@ -479,10 +518,15 @@ export function PersonalAgendaScreen({ nav }) {
         ))}
       </div>
 
-      {/* FORMULARIO DE CREACIÓN */}
+      {/* FORMULARIO DE CREACIÓN
+          `date` sale de toLocalDateKey y no de toISOString(): esta ultima pasa
+          a UTC, o sea SUMA 3 horas en Uruguay. `selectedDate` conserva la hora
+          del dia, asi que usando el programa de noche elegias el 5 en el
+          calendario y la tarea nacia el 6. De mañana andaba bien: por eso el
+          error parecia aleatorio. */}
       {showForm && (
         <EventForm
-          initial={{ ...EMPTY_FORM, date: selectedDate.toISOString().split('T')[0] }}
+          initial={{ ...EMPTY_FORM, date: toLocalDateKey(selectedDate) }}
           onSave={handleSave}
           onCancel={() => setShowForm(false)}
         />
@@ -571,6 +615,6 @@ const btnSecondary = {
 
 const btnDanger = {
   padding: '10px 20px', borderRadius: 20, border: 'none',
-  background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+  background: 'rgba(239,68,68,0.1)', color: 'var(--accent-red)',
   fontSize: 14, cursor: 'pointer',
 }

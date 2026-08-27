@@ -1,8 +1,8 @@
 {
   "name": "zenday",
-  "version": "1.0.1",
+  "version": "1.0.9",
   "description": "ZenDay - Gestión inteligente para emprendedores",
-  "author": "Tu Nombre",
+  "author": "Francisco",
   "main": "electron/main.cjs",
   "type": "commonjs",
   "scripts": {
@@ -14,7 +14,13 @@
     "dist:zip": "npm run build && electron-builder --win --x64",
     "electron": "electron electron/main.cjs",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron electron/main.cjs\"",
-    "build:exe": "npm run build && electron-builder --win"
+    "build:exe": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps",
+    "test:rules": "npx --yes firebase-tools emulators:exec --only firestore \"node test/firestore-rules.test.mjs\"",
+    "deploy:rules": "npx --yes firebase-tools deploy --only firestore:rules,database",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rtdb": "npx --yes firebase-tools emulators:exec --only database \"node test/rtdb-rules.test.mjs\""
   },
   "build": {
     "appId": "com.zenday.app",
@@ -37,17 +43,13 @@
     "extraResources": [
       {
         "from": "dist",
-        "to": "dist"
+        "to": "dist",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
       }
     ],
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "category": "public.app-category.productivity",
-      "icon": "public/icon.icns"
-    },
     "win": {
       "target": [
         {
@@ -81,13 +83,20 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.1",
     "@vitejs/plugin-react": "^4.6.0",
     "concurrently": "^9.1.2",
     "electron": "^36.7.0",
     "electron-builder": "^26.0.12",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.11.0",
     "vite": "^6.0.4",
+    "vitest": "^4.1.11",
     "wait-on": "^8.0.3"
   }
 }

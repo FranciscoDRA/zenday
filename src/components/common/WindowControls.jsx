@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react'
 
-export function WindowControls() {
+export function WindowControls({ actions }) {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
     const api = window.electronAPI
     if (!api) return
 
-    // Estado inicial
     const init = async () => {
       try {
         const fn = api.isMaximized ?? api.getIsMaximized
@@ -18,8 +17,6 @@ export function WindowControls() {
     }
     init()
 
-    // Suscribir al cambio de estado
-    // onWindowMaximized debe devolver una función de cleanup (patrón estándar en Electron)
     let unsubscribe
     try {
       if (api.onWindowMaximized) {
@@ -30,11 +27,9 @@ export function WindowControls() {
     }
 
     return () => {
-      // Si el preload devuelve un cleanup, lo usamos
       if (typeof unsubscribe === 'function') {
         unsubscribe()
       } else if (api.offWindowMaximized) {
-        // Alternativa: API explícita de desuscripción
         try { api.offWindowMaximized(setIsMaximized) } catch {}
       }
     }
@@ -56,9 +51,18 @@ export function WindowControls() {
         <span>ZenDay</span>
       </div>
 
-      <div className="window-controls__group">
+      {/* Acciones: NotificationCenter, ReminderPanel, BackupManager */}
+      {actions && (
+        <div
+          className="window-controls__group"
+          style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto', marginRight: '8px' }}
+        >
+          {actions}
+        </div>
+      )}
 
-        {/* Minimizar */}
+      <div className="window-controls__group" style={{ WebkitAppRegion: 'no-drag' }}>
+
         <button
           className="win-control win-control--minimize"
           onClick={() => call('minimize', 'minimizeWindow')}
@@ -70,7 +74,6 @@ export function WindowControls() {
           </svg>
         </button>
 
-        {/* Maximizar / Restaurar */}
         <button
           className={`win-control win-control--maximize${isMaximized ? ' restore' : ''}`}
           onClick={() => call('maximize', 'maximizeWindow')}
@@ -89,7 +92,6 @@ export function WindowControls() {
           )}
         </button>
 
-        {/* Cerrar */}
         <button
           className="win-control win-control--close"
           onClick={() => call('close', 'closeWindow')}

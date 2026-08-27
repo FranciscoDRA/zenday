@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNotifications } from '../../contexts/NotificationContext'
+import { useConfirm } from '../../contexts/ConfirmContext'
 import { formatDateTime } from '../../utils/helpers'
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 const TYPE_CONFIG = {
-  success: { icon: '✅', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
-  warning: { icon: '⚠️', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
-  error:   { icon: '🚨', color: '#ef4444', bg: 'rgba(239,68,68,0.10)'  },
-  info:    { icon: '📋', color: '#6366f1', bg: 'rgba(99,102,241,0.10)' },
+  success: { icon: '✅', color: 'var(--accent-green)', bg: 'rgba(16,185,129,0.10)' },
+  warning: { icon: '⚠️', color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.10)' },
+  error:   { icon: '🚨', color: 'var(--accent-red)', bg: 'rgba(239,68,68,0.10)'  },
+  info:    { icon: '📋', color: 'var(--accent-blue)', bg: 'rgba(99,102,241,0.10)' },
 }
 
 function getConfig(type) {
@@ -80,6 +81,8 @@ const isRelevantForPersonal = (n) => {
 // ─── COMPONENTE ───────────────────────────────────────────────────────────────
 
 export function NotificationCenter({ nav, userMode = 'professional' }) {
+  const { confirm } = useConfirm()
+
   const [isOpen,    setIsOpen]    = useState(false)
   const [panelPos,  setPanelPos]  = useState({ top: 0, right: 0 })
   const [showAll,   setShowAll]   = useState(false)  // ← NUEVO: control de "ver más"
@@ -155,12 +158,20 @@ export function NotificationCenter({ nav, userMode = 'professional' }) {
   }, [markAsRead, nav])
 
   // CORREGIDO: handleClearAll elimina solo notificaciones del modo actual
-  const handleClearAll = useCallback(() => {
-    if (!window.confirm(`¿Eliminar todas las notificaciones de ${modeLabel.title.toLowerCase()}?`)) return
+  const handleClearAll = useCallback(async () => {
+      // Era window.confirm: en Electron eso abre el cartel gris del sistema,
+      // con la ruta del archivo arriba. Al lado del resto de la app parece
+      // que algo se rompio. useConfirm usa el modal propio, que ademas se
+      // cierra con Escape y confirma con Enter.
+    const ok = await confirm(
+      `¿Eliminar todas las notificaciones de ${modeLabel.title.toLowerCase()}?`,
+      'Eliminar notificaciones'
+    )
+    if (!ok) return
     modeNotifications.forEach(n => deleteNotification(n.id))
     setIsOpen(false)
     setShowAll(false)
-  }, [modeNotifications, deleteNotification, modeLabel.title])
+  }, [modeNotifications, deleteNotification, modeLabel.title, confirm])
 
   // CORREGIDO: markAllAsRead solo marca las del modo actual
   const handleMarkAllAsRead = useCallback(() => {
@@ -421,7 +432,7 @@ function NotificationItem({ n, cfg, nowTimestamp, onClick, onDelete, onWhatsAppC
             borderRadius:   '50%',
             fontSize:       12,
             cursor:         'pointer',
-            color:          '#ef4444',
+            color:          'var(--accent-red)',
             display:        'flex',
             alignItems:     'center',
             justifyContent: 'center',

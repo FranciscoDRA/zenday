@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { newId, todayKey, texto } from './helpers'
 
 // ========== FUNCIONES DE DETECCIÓN DE DUPLICADOS ==========
 
@@ -15,15 +16,17 @@ export function detectDuplicates(importedProducts, existingProducts) {
   
   existingProducts.forEach(p => {
     if (p.id) existingIds.add(String(p.id))
-    if (p.code) existingCodes.add(p.code.toLowerCase())
-    if (p.name) existingNames.add(p.name.toLowerCase())
+    // Los que ya estan guardados pueden traer code/name numericos de un Excel
+    // importado antes de que esto se arreglara.
+    if (p.code) existingCodes.add(texto(p.code).toLowerCase())
+    if (p.name) existingNames.add(texto(p.name).toLowerCase())
   })
   
   importedProducts.forEach(product => {
     // 👈 PRIMERO VERIFICAR POR ID
     const idDuplicate = product.id && existingIds.has(String(product.id))
-    const codeDuplicate = !idDuplicate && product.code && existingCodes.has(product.code.toLowerCase())
-    const nameDuplicate = !idDuplicate && !codeDuplicate && product.name && existingNames.has(product.name.toLowerCase())
+    const codeDuplicate = !idDuplicate && product.code && existingCodes.has(texto(product.code).toLowerCase())
+    const nameDuplicate = !idDuplicate && !codeDuplicate && product.name && existingNames.has(texto(product.name).toLowerCase())
     
     if (idDuplicate || codeDuplicate || nameDuplicate) {
       duplicates.push({
@@ -106,16 +109,19 @@ export async function importProductsFromExcel(file, existingProducts = []) {
           const product = {
             // ✅ ID SIEMPRE NUEVO, NUNCA usar el del Excel
             id: nuevoId,
-            name: row['nombre'] || row['Nombre'] || row['NOMBRE'] || row['name'] || row['Name'] || '',
-            code: row['codigo'] || row['Código'] || row['CODIGO'] || row['code'] || row['Code'] || '',
+            // Un codigo de articulo tipo 100245 entra como numero y despues
+            // rompe la busqueda del panel. price y stock NO se tocan: ahi el
+            // numero es lo que corresponde.
+            name: texto(row['nombre'] || row['Nombre'] || row['NOMBRE'] || row['name'] || row['Name']),
+            code: texto(row['codigo'] || row['Código'] || row['CODIGO'] || row['code'] || row['Code']),
             price: parseFloat(row['precio'] || row['Precio'] || row['PRECIO'] || row['price'] || row['Price'] || 0),
             stock: parseInt(row['stock'] || row['Stock'] || row['STOCK'] || 0),
-            description: row['descripcion'] || row['Descripción'] || row['DESCRIPCION'] || row['description'] || row['Description'] || '',
+            description: texto(row['descripcion'] || row['Descripción'] || row['DESCRIPCION'] || row['description'] || row['Description']),
             createdAt: new Date().toISOString()
           }
           
           // Validar que tenga al menos nombre
-          if (product.name && product.name.trim() !== '') {
+          if (texto(product.name) !== '') {
             products.push(product)
           } else {
             console.warn('⚠️ Fila ignorada: falta nombre', row)
@@ -168,16 +174,20 @@ export async function importPatientsFromExcel(file, existingPatients = []) {
           // ✅ Para pacientes también generamos ID nuevo si no viene o si queremos evitar duplicados
           const patient = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}`,
-            name: row['Nombre'] || row['nombre'] || row['NAME'] || '',
-            phone: row['Teléfono'] || row['telefono'] || row['PHONE'] || '',
-            email: row['Email'] || row['email'] || row['EMAIL'] || '',
-            address: row['Dirección'] || row['direccion'] || row['ADDRESS'] || '',
-            birthDate: row['Fecha Nacimiento'] || row['fecha_nacimiento'] || '',
-            observations: row['Observaciones'] || row['observaciones'] || '',
+            // texto() en CADA campo. Sin esto, una celda de Excel con solo
+            // digitos entra como NUMERO: el telefono 099412887 se guarda como
+            // 99412887 y despues cualquier .trim() sobre el revienta. Ese es el
+            // origen del error que rompia el alta de clientes.
+            name:         texto(row['Nombre'] || row['nombre'] || row['NAME']),
+            phone:        texto(row['Teléfono'] || row['telefono'] || row['PHONE']),
+            email:        texto(row['Email'] || row['email'] || row['EMAIL']),
+            address:      texto(row['Dirección'] || row['direccion'] || row['ADDRESS']),
+            birthDate:    texto(row['Fecha Nacimiento'] || row['fecha_nacimiento']),
+            observations: texto(row['Observaciones'] || row['observaciones']),
             createdAt: new Date().toISOString()
           }
           
-          if (patient.name && patient.name.trim() !== '') {
+          if (texto(patient.name) !== '') {
             patients.push(patient)
           }
         }
@@ -244,7 +254,7 @@ export function exportProductsToExcel(products) {
   const ws = XLSX.utils.aoa_to_sheet(wsData)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Productos')
-  XLSX.writeFile(wb, `productos_${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `productos_${todayKey()}.xlsx`)
 }
 
 export function exportProductsToPDF(products) {
@@ -272,7 +282,7 @@ export function exportProductsToPDF(products) {
     margin: { top: 40 }
   })
   
-  doc.save(`productos_${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`productos_${todayKey()}.pdf`)
 }
 
 // Exportar Pacientes
@@ -292,7 +302,7 @@ export function exportPatientsToExcel(patients) {
   const ws = XLSX.utils.aoa_to_sheet(wsData)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
-  XLSX.writeFile(wb, `clientes_${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `clientes_${todayKey()}.xlsx`)
 }
 
 export function exportPatientsToPDF(patients) {
@@ -319,7 +329,7 @@ export function exportPatientsToPDF(patients) {
     margin: { top: 40 }
   })
   
-  doc.save(`clientes_${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`clientes_${todayKey()}.pdf`)
 }
 
 // Exportar Citas (Appointments)
@@ -342,7 +352,7 @@ export function exportAppointmentsToExcel(appointments) {
   const ws = XLSX.utils.aoa_to_sheet(wsData)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Citas')
-  XLSX.writeFile(wb, `citas_${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `citas_${todayKey()}.xlsx`)
 }
 
 export function exportAppointmentsToPDF(appointments) {
@@ -423,7 +433,7 @@ export function exportAppointmentsToPDF(appointments) {
   doc.text(`Pendientes: ${pending}`, 14, finalY + 26)
   doc.text(`Canceladas: ${cancelled}`, 14, finalY + 34)
   
-  doc.save(`citas_${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`citas_${todayKey()}.pdf`)
 }
 
 // Exportar Reporte Financiero
@@ -491,69 +501,172 @@ export function exportFinancialToPDF(appointments, stats) {
     })
   }
   
-  doc.save(`reporte_financiero_${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`reporte_financiero_${todayKey()}.pdf`)
 }
 
 // ========== FUNCIONES PARA MANEJAR ARCHIVOS DE CLIENTES ==========
 
-export function getClientDocuments(patientId) {
-  return JSON.parse(localStorage.getItem(`client_documents_${patientId}`) || '[]')
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADJUNTOS DE CLIENTES
+//
+//  ANTES: cada archivo se guardaba como base64 dentro de localStorage.
+//  base64 infla ~33% y localStorage tiene un tope de 5-10 MB COMPARTIDO con
+//  pedidos, clientes y gastos. Dos PDFs de 2 MB y la app dejaba de guardar
+//  TODO, en silencio.
+//
+//  AHORA: en Electron los archivos van al disco (electron/documentStore.cjs).
+//  Fuera de Electron —el navegador, con `npm run dev`— se mantiene el esquema
+//  viejo como respaldo, para que la app siga funcionando igual.
+//
+//  Las cuatro funciones pasaron a ser async. Los metadatos ya NO incluyen el
+//  campo `data`: los bytes se leen recién cuando se abre o se descarga.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const enElectron = () => typeof window !== 'undefined' && !!window.electronAPI?.docsList
+const claveVieja = (patientId) => `client_documents_${patientId}`
+
+function leerLocal(patientId) {
+  try { return JSON.parse(localStorage.getItem(claveVieja(patientId)) || '[]') }
+  catch { return [] }
 }
 
-export function deleteClientDocument(patientId, documentId) {
-  const documents = JSON.parse(localStorage.getItem(`client_documents_${patientId}`) || '[]')
-  const filtered = documents.filter(d => d.id !== documentId)
-  localStorage.setItem(`client_documents_${patientId}`, JSON.stringify(filtered))
-  return filtered
-}
+/**
+ * Migra a disco los adjuntos que hayan quedado en localStorage.
+ * Sólo borra la clave si el proceso principal confirmó que TODOS los archivos
+ * quedaron escritos y verificados. Ante cualquier falla, no se toca nada:
+ * preferible seguir con la cuota apretada que perder el estudio de un paciente.
+ */
+export async function migrateClientDocuments(patientId) {
+  if (!enElectron()) return { migrados: 0 }
+  const viejos = leerLocal(patientId)
+  if (viejos.length === 0) return { migrados: 0 }
 
-// ✅ CORREGIDO: El parámetro ya no se llama "document" para no sobreescribir el DOM global
-export function downloadClientDocument(doc) {
-  if (typeof window === 'undefined' || !window.document) {
-    console.error('No se puede descargar: entorno no válido')
-    return
+  try {
+    const res = await window.electronAPI.docsMigrate(patientId, viejos)
+    if (res?.ok && res.puedeBorrarse) {
+      localStorage.removeItem(claveVieja(patientId))
+      console.log(`[Documentos] ${res.migrados} adjuntos de ${patientId} movidos al disco`)
+    } else {
+      console.warn(`[Documentos] Migración incompleta de ${patientId}: se conserva la copia local`)
+    }
+    return res || { migrados: 0 }
+  } catch (err) {
+    console.error('[Documentos] Error migrando:', err)
+    return { migrados: 0, error: err.message }
   }
+}
+
+export async function getClientDocuments(patientId) {
+  if (enElectron()) {
+    await migrateClientDocuments(patientId)
+    try { return await window.electronAPI.docsList(patientId) }
+    catch (err) { console.error('[Documentos] Error listando:', err); return [] }
+  }
+  return leerLocal(patientId).map(({ data, ...meta }) => meta)
+}
+
+export async function deleteClientDocument(patientId, documentId) {
+  if (enElectron()) {
+    try {
+      const res = await window.electronAPI.docsDelete(patientId, documentId)
+      return res?.docs || []
+    } catch (err) { console.error('[Documentos] Error borrando:', err); return [] }
+  }
+  const documents = leerLocal(patientId)
+  const filtered = documents.filter(d => String(d.id) !== String(documentId))
+  localStorage.setItem(claveVieja(patientId), JSON.stringify(filtered))
+  return filtered.map(({ data, ...meta }) => meta)
+}
+
+/** Borra todos los adjuntos de un cliente. Se llama al eliminar el cliente. */
+export async function deleteAllClientDocuments(patientId) {
+  if (enElectron()) {
+    try { await window.electronAPI.docsDeleteAll(patientId) } catch (err) { console.error(err) }
+  }
+  try { localStorage.removeItem(claveVieja(patientId)) } catch { /* ignorar */ }
+}
+
+/** Devuelve el data: URL de un adjunto. Se lee del disco recién acá. */
+export async function readClientDocument(patientId, documentId) {
+  if (enElectron()) {
+    try {
+      const res = await window.electronAPI.docsRead(patientId, documentId)
+      return res?.ok ? res.dataUrl : null
+    } catch (err) { console.error('[Documentos] Error leyendo:', err); return null }
+  }
+  const doc = leerLocal(patientId).find(d => String(d.id) === String(documentId))
+  return doc?.data || null
+}
+
+export async function downloadClientDocument(doc, patientId) {
+  if (typeof window === 'undefined' || !window.document) return
+
+  const dataUrl = doc.data || (patientId ? await readClientDocument(patientId, doc.id) : null)
+  if (!dataUrl) { console.error('[Documentos] No se pudo obtener el archivo'); return }
+
   const link = window.document.createElement('a')
-  link.href = doc.data
+  link.href = dataUrl
   link.download = doc.name
   window.document.body.appendChild(link)
   link.click()
   window.document.body.removeChild(link)
 }
 
+// ✅ CORREGIDO: El parámetro ya no se llama "document" para no sobreescribir el DOM global
 export function saveClientDocument(patientId, file, documentType = 'generic') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    
-    reader.onload = (e) => {
+
+    reader.onload = async (e) => {
+      const meta = {
+        id: newId(),
+        name: file.name,
+        type: documentType,
+        size: file.size,
+        mimeType: file.type,
+        uploadDate: new Date().toISOString(),
+      }
+
+      // En Electron el archivo va al disco: no consume la cuota de localStorage.
+      if (typeof window !== 'undefined' && window.electronAPI?.docsSave) {
+        try {
+          const res = await window.electronAPI.docsSave(patientId, meta, e.target.result)
+          if (!res?.ok) return reject(new Error(res?.error || 'No se pudo guardar el archivo'))
+          return resolve(res.doc)
+        } catch (err) {
+          return reject(new Error(err?.message || 'No se pudo guardar el archivo'))
+        }
+      }
+
+      // Respaldo para el navegador (npm run dev): esquema viejo, con el aviso
+      // de cuota que antes no existía.
       try {
-        const documents = JSON.parse(localStorage.getItem(`client_documents_${patientId}`) || '[]')
-        
-        const exists = documents.some(d => d.name === file.name)
-        if (exists) {
-          reject(new Error(`Ya existe un documento llamado "${file.name}"`))
-          return
+        const key = `client_documents_${patientId}`
+        let documents = []
+        try { documents = JSON.parse(localStorage.getItem(key) || '[]') } catch { documents = [] }
+
+        if (documents.some(d => d.name === file.name)) {
+          return reject(new Error(`Ya existe un documento llamado "${file.name}"`))
         }
-        
-        const newDoc = {
-          id: Date.now(),
-          name: file.name,
-          type: documentType,
-          size: file.size,
-          mimeType: file.type,
-          data: e.target.result,
-          uploadDate: new Date().toISOString()
-        }
-        
+
+        const newDoc = { ...meta, data: e.target.result }
         documents.push(newDoc)
-        localStorage.setItem(`client_documents_${patientId}`, JSON.stringify(documents))
-        
+
+        try {
+          localStorage.setItem(key, JSON.stringify(documents))
+        } catch (err) {
+          const cuota = err?.name === 'QuotaExceededError' || err?.code === 22
+          return reject(new Error(cuota
+            ? 'No hay espacio en el navegador para este archivo. En la app de escritorio los adjuntos van al disco y no tienen este límite.'
+            : 'No se pudo guardar el archivo.'))
+        }
+
         resolve(newDoc)
       } catch (error) {
         reject(error)
       }
     }
-    
+
     reader.onerror = () => reject(new Error('Error al leer el archivo'))
     reader.readAsDataURL(file)
   })
