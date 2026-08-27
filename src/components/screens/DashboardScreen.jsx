@@ -6,7 +6,8 @@ import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
-import { exportFinancialToPDF, exportAppointmentsToExcel } from '../../utils/exportImport'
+import { exportAppointmentsToExcel } from '../../utils/exportImport'
+import { generateFinancialReport } from '../../utils/pdfReportGenerator'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
@@ -248,7 +249,19 @@ function EntrepreneurDashboard({
     setShowGoalEdit(false)
   }, [tempGoal])
 
-  const handleExportPDF   = useCallback(() => exportFinancialToPDF(appointments, 'month'), [appointments])
+  // FIX: exportFinancialToPDF(appointments, 'month') — el segundo argumento
+  // que esperaba la función era un objeto de estadísticas (stats.todayTotal,
+  // etc.), no el string 'month'. 'month'.todayTotal es undefined, así que el
+  // PDF salía siempre en $0 sin importar los datos reales. Ahora usa el
+  // generador financiero de verdad (mismo que "Reportes"), con el mes en
+  // curso como rango — que es lo que el botón decía hacer.
+  const handleExportPDF = useCallback(() => {
+    const hoy = new Date()
+    const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+    const finHoy     = toLocalDateKey(hoy)
+    generateFinancialReport({ appointments, expenses, startDate: inicioMes, endDate: finHoy })
+  }, [appointments, expenses])
+
   const handleExportExcel = useCallback(() => exportAppointmentsToExcel(appointments), [appointments])
 
   return (
@@ -365,9 +378,9 @@ function EntrepreneurDashboard({
           <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>📦 Pedidos activos</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
-              { key: 'pendientes', label: '⏳ Pendientes',  count: pedidosByEstado.PENDIENTE,  color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.10)' },
-              { key: 'enproceso',  label: '🔨 En proceso',  count: pedidosByEstado.EN_PROCESO, color: '#3b82f6', bg: 'rgba(59,130,246,0.10)' },
-              { key: 'listos',     label: '✅ Listos',      count: pedidosByEstado.COMPLETADO, color: 'var(--accent-green)', bg: 'rgba(16,185,129,0.10)' },
+              { key: 'pendientes', label: '⏳ Pendientes',  count: pedidosByEstado.PENDIENTE,  color: 'var(--accent-amber)', bg: 'color-mix(in srgb, var(--accent-amber) 10%, transparent)' },
+              { key: 'enproceso',  label: '🔨 En proceso',  count: pedidosByEstado.EN_PROCESO, color: 'var(--sky)', bg: 'color-mix(in srgb, var(--sky) 10%, transparent)' },
+              { key: 'listos',     label: '✅ Listos',      count: pedidosByEstado.COMPLETADO, color: 'var(--accent-green)', bg: 'color-mix(in srgb, var(--accent-green) 10%, transparent)' },
             ].map(({ key, label, count, color, bg }) => (
               <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '8px 12px', borderRadius: 10, background: bg }}>
@@ -394,20 +407,20 @@ function EntrepreneurDashboard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {stockAlerts.out.slice(0, 3).map((p, i) => (
                 <div key={`out-${String(p.id)}-${i}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '6px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', borderLeft: '3px solid #ef4444' }}>
+                  padding: '6px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--accent-red) 8%, transparent)', borderLeft: '3px solid var(--accent-red)' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap', maxWidth: '65%' }}>{p.name}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-red)',
-                    background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: 20 }}>AGOTADO</span>
+                    background: 'color-mix(in srgb, var(--accent-red) 15%, transparent)', padding: '2px 8px', borderRadius: 20 }}>AGOTADO</span>
                 </div>
               ))}
               {stockAlerts.low.slice(0, 3).map((p, i) => (
                 <div key={`low-${String(p.id)}-${i}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '6px 10px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', borderLeft: '3px solid #f59e0b' }}>
+                  padding: '6px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--accent-amber) 8%, transparent)', borderLeft: '3px solid var(--accent-amber)' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap', maxWidth: '65%' }}>{p.name}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-amber)',
-                    background: 'rgba(245,158,11,0.15)', padding: '2px 8px', borderRadius: 20 }}>{p.stock} uds</span>
+                    background: 'color-mix(in srgb, var(--accent-amber) 15%, transparent)', padding: '2px 8px', borderRadius: 20 }}>{p.stock} uds</span>
                 </div>
               ))}
               {(stockAlerts.out.length + stockAlerts.low.length) > 6 && (
@@ -487,7 +500,7 @@ function EntrepreneurDashboard({
                 const maxQty = topProducts[0].qty
                 const barW   = (p.qty / maxQty) * 100
                 const medals = ['🥇','🥈','🥉']
-                const barColors = ['var(--accent-amber)','#94a3b8','#f97316','var(--accent-blue)','var(--accent-green)']
+                const barColors = ['var(--accent-amber)','var(--text-quaternary)','var(--sky)','var(--accent-blue)','var(--accent-green)']
                 return (
                   <div key={`top-${p.name}-${i}`}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>

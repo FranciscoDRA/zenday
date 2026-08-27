@@ -139,7 +139,7 @@ setTimeout(() => onActivate(key.trim()), 1200)      } else {
             marginBottom: '24px',
             textAlign: 'center',
           }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: daysLeft <= 2 ? 'var(--accent-red)' : '#b45309' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: daysLeft <= 2 ? 'var(--accent-red)' : 'var(--accent-amber)' }}>
               {daysLeft <= 2 ? '⚠️' : '⏳'} Período de prueba
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>

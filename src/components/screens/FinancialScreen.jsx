@@ -3,6 +3,7 @@ import { BackButton } from '../common/BackButton'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
 import { formatCurrency, parseLocalDate, todayKey, getRevenueDate } from '../../utils/helpers'
 import { cierreDelDia, desglosePorMedio } from '../../utils/mediosDePago'
+import { generateDailyCashCloseReport } from '../../utils/pdfReportGenerator'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import * as XLSX from 'xlsx'
@@ -22,9 +23,9 @@ const CATEGORY_COLORS = {
   Transporte: 'var(--accent-amber)',
   Servicios: 'var(--accent-green)',
   Publicidad: 'var(--accent-red)',
-  Alquiler: '#8b5cf6',
-  Salarios: '#ec4899',
-  Otros: '#6b7280',
+  Alquiler: 'var(--accent-purple)',
+  Salarios: 'var(--accent-pink)',
+  Otros: 'var(--text-quaternary)',
 }
 
 const MONTH_NAMES_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -275,7 +276,7 @@ export function FinancialScreen({ nav, appointments, expenses = [], setExpenses 
   // ========== CATEGORÍAS PARA GRÁFICO ==========
   const categoryChartData = useMemo(() =>
     Object.entries(expenseData.byCategory).map(([name, value]) => ({
-      name, value, color: CATEGORY_COLORS[name] ?? '#6b7280',
+      name, value, color: CATEGORY_COLORS[name] ?? 'var(--text-quaternary)',
     })).sort((a, b) => b.value - a.value),
     [expenseData.byCategory])
 
@@ -516,6 +517,19 @@ export function FinancialScreen({ nav, appointments, expenses = [], setExpenses 
               {cierre.cantidad === 1 ? '1 cobro' : `${cierre.cantidad} cobros`}
             </span>
           </div>
+          {cierre.cantidad > 0 && (
+            <button
+              onClick={() => generateDailyCashCloseReport({ appointments, date: new Date() })}
+              style={{
+                padding: '8px 14px', borderRadius: '20px', border: '1px solid var(--border)',
+                background: 'var(--bg-secondary)', color: 'var(--text-secondary)',
+                fontSize: '12px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+              title="Descargar el cierre de hoy en PDF, para archivar"
+            >
+              📄 PDF del cierre
+            </button>
+          )}
         </div>
 
         {cierre.cantidad === 0 ? (
@@ -685,8 +699,8 @@ export function FinancialScreen({ nav, appointments, expenses = [], setExpenses 
               <YAxis stroke="var(--text-tertiary)" fontSize={12} tickFormatter={(v) => formatCurrency(v, 'UYU')} />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Area type="monotone" dataKey="ingresos" name="Ingresos Cobrados" stroke="var(--accent-green)" fill="#10b98133" />
-              <Area type="monotone" dataKey="gastos" name="Gastos" stroke="var(--accent-red)" fill="#ef444433" />
+              <Area type="monotone" dataKey="ingresos" name="Ingresos Cobrados" stroke="var(--accent-green)" fill="color-mix(in srgb, var(--accent-green) 20%, transparent)" />
+              <Area type="monotone" dataKey="gastos" name="Gastos" stroke="var(--accent-red)" fill="color-mix(in srgb, var(--accent-red) 20%, transparent)" />
             </AreaChart>
           )}
           {chartView === 'composed' && (
@@ -697,7 +711,7 @@ export function FinancialScreen({ nav, appointments, expenses = [], setExpenses 
               <Tooltip content={<CustomTooltip />} />
               <Legend />
               <Bar dataKey="ingresos" name="Ingresos Cobrados" fill="var(--accent-green)" barSize={30} />
-              <Line type="monotone" dataKey="ganancia" name="Ganancia" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="ganancia" name="Ganancia" stroke="var(--accent-purple)" strokeWidth={3} dot={{ r: 4 }} />
             </ComposedChart>
           )}
         </ResponsiveContainer>
@@ -771,7 +785,7 @@ export function FinancialScreen({ nav, appointments, expenses = [], setExpenses 
               }}>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className="expense-category" style={{
-                    color: CATEGORY_COLORS[expense.category] ?? '#6b7280',
+                    color: CATEGORY_COLORS[expense.category] ?? 'var(--text-quaternary)',
                     fontWeight: 600, fontSize: 12
                   }}>
                     {expense.category}

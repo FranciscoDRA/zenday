@@ -268,7 +268,7 @@ export function exportProductsToPDF(products) {
   const tableData = products.map(p => [
     p.name,
     p.code || '-',
-    `$${p.price.toLocaleString()}`,
+    `$${(p.price || 0).toLocaleString()}`,
     p.stock || 0,
     p.description?.substring(0, 30) || '-'
   ])
@@ -434,74 +434,6 @@ export function exportAppointmentsToPDF(appointments) {
   doc.text(`Canceladas: ${cancelled}`, 14, finalY + 34)
   
   doc.save(`citas_${todayKey()}.pdf`)
-}
-
-// Exportar Reporte Financiero
-export function exportFinancialToPDF(appointments, stats) {
-  const doc = new jsPDF()
-  
-  doc.setFontSize(20)
-  doc.setTextColor(99, 102, 241)
-  doc.text('Reporte Financiero', 14, 22)
-  
-  doc.setFontSize(10)
-  doc.setTextColor(100, 100, 100)
-  doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 32)
-  
-  doc.setFontSize(14)
-  doc.setTextColor(0, 0, 0)
-  doc.text('Resumen del día', 14, 50)
-  
-  doc.setFontSize(11)
-  const statsData = [
-    ['Total de citas:', stats?.todayTotal || 0],
-    ['Citas completadas:', stats?.todayCompleted || 0],
-    ['Citas pendientes:', stats?.todayPending || 0],
-    ['Ingresos del día:', `$${(stats?.revenueToday || 0).toLocaleString()}`],
-    ['Total clientes:', stats?.totalPatients || 0]
-  ]
-  
-  autoTable(doc, {
-    body: statsData,
-    startY: 55,
-    theme: 'plain',
-    styles: { fontSize: 11 },
-    columnStyles: { 0: { fontStyle: 'bold' } }
-  })
-  
-  const currentMonth = new Date().getMonth()
-  const currentYear = new Date().getFullYear()
-  const monthlyIncome = appointments
-    .filter(a => {
-      const date = new Date(a.startTime)
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear && a.paid
-    })
-    .reduce((sum, a) => sum + (a.price || 0), 0)
-  
-  doc.text(`Ingresos del mes: $${monthlyIncome.toLocaleString()}`, 14, doc.lastAutoTable.finalY + 15)
-  
-  const upcomingAppointments = appointments
-    .filter(a => new Date(a.startTime) >= new Date() && a.status !== 'cancelled')
-    .slice(0, 10)
-    .map(a => [
-      a.patientName || '-',
-      new Date(a.startTime).toLocaleDateString(),
-      new Date(a.startTime).toLocaleTimeString(),
-      a.status || '-'
-    ])
-  
-  if (upcomingAppointments.length > 0) {
-    doc.text('Próximas citas', 14, doc.lastAutoTable.finalY + 30)
-    autoTable(doc, {
-      head: [['Cliente', 'Fecha', 'Hora', 'Estado']],
-      body: upcomingAppointments,
-      startY: doc.lastAutoTable.finalY + 35,
-      theme: 'striped',
-      headStyles: { fillColor: [99, 102, 241] }
-    })
-  }
-  
-  doc.save(`reporte_financiero_${todayKey()}.pdf`)
 }
 
 // ========== FUNCIONES PARA MANEJAR ARCHIVOS DE CLIENTES ==========

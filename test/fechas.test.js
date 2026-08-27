@@ -102,6 +102,63 @@ describe('reprogramar una cita muestra el día correcto', () => {
   })
 })
 
+describe('la línea de tiempo del cliente muestra el día que corresponde', () => {
+  // Iba para el otro lado del bug de siempre: toLocalDateKey(a.startTime) arma
+  // bien la clave 'YYYY-MM-DD', pero formatDate() la volvía a pasar por
+  // `new Date(dateStr)` para mostrarla — y eso SÍ la interpreta como UTC.
+  // Una cita del 5 de agosto terminaba mostrando "4 ago." en la ficha del
+  // cliente, aunque la agrupación por día (la que usan los otros tests de este
+  // archivo) ya estuviera bien.
+  const timeline = leer('components', 'screens', 'PatientTimeline.jsx')
+
+  it('importa parseLocalDate', () => {
+    expect(timeline).toMatch(/import \{[^}]*parseLocalDate[^}]*\} from '\.\.\/\.\.\/utils\/helpers'/)
+  })
+
+  it('formatDate usa parseLocalDate para una fecha sin hora, no new Date directo', () => {
+    const bloque = timeline.slice(timeline.indexOf('function formatDate'), timeline.indexOf('function formatTime'))
+    expect(bloque).toMatch(/parseLocalDate\(dateStr\)/)
+  })
+
+  it('el 5 de agosto no se muestra como el 4', () => {
+    expect(parseLocalDate('2026-08-05').getDate()).toBe(5)
+    expect(new Date('2026-08-05').getDate()).toBe(4)   // lo que hacía formatDate antes
+  })
+})
+
+describe('los reportes PDF no pierden el último día del rango', () => {
+  // generateSalesReport/generateCustomersReport/generateFinancialReport reciben
+  // startDate/endDate como 'YYYY-MM-DD' (vienen de un <input type="date"> en
+  // ReportsScreen). Armaban el corte de fin con
+  // `new Date(endDate); end.setHours(23,59,59)`: new Date('YYYY-MM-DD') se
+  // interpreta como medianoche UTC, y setHours() opera en hora LOCAL sobre esa
+  // fecha ya corrida — en Uruguay (UTC-3) el resultado final queda fijado al
+  // día ANTERIOR a las 23:59:59, así que el reporte del "5 de agosto" excluía
+  // el 5 de agosto entero. No es exportable como jsPDF real acá (entorno
+  // 'node', sin DOM para doc.save()), así que se verifica que el archivo
+  // fuente ya no arme el rango con new Date() y use parseLocalDate.
+  const fuente = leer('utils', 'pdfReportGenerator.js')
+
+  it('importa parseLocalDate', () => {
+    expect(fuente).toMatch(/import \{[^}]*parseLocalDate[^}]*\} from '\.\/helpers'/)
+  })
+
+  it('ninguna función arma el rango con new Date(startDate)/new Date(endDate)', () => {
+    expect(fuente).not.toMatch(/new Date\(startDate\)/)
+    expect(fuente).not.toMatch(/new Date\(endDate\)/)
+  })
+
+  it('el corte de fin sigue llegando hasta el final del día (23:59:59.999)', () => {
+    const veces = (fuente.match(/end\.setHours\(23, 59, 59, 999\)/g) || []).length
+    expect(veces).toBe(3)   // ventas, clientes, financiero
+  })
+
+  it('el gasto (fecha sin hora) también usa parseLocalDate, no new Date directo', () => {
+    const bloque = fuente.slice(fuente.indexOf('generateFinancialReport'))
+    expect(bloque).toMatch(/const d = parseLocalDate\(e\.date\)/)
+  })
+})
+
 describe('el modal de fecha de pago recibe lo que le mandan', () => {
   const modal = leer('components', 'common', 'PaymentDateModal.jsx')
 

@@ -419,7 +419,7 @@ export function PatientDetailScreen({ nav, patients, appointments, updatePatient
               style={{ 
                 padding: '9px 20px',
                 background: 'transparent',
-                border: '1px solid #ef4444',
+                border: '1px solid var(--accent-red)',
                 borderRadius: '40px',
                 color: 'var(--accent-red)',
                 cursor: isDeleting ? 'wait' : 'pointer',

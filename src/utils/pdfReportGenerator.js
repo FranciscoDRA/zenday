@@ -4,8 +4,8 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { todayKey } from './helpers'
-import { desglosePorMedio, etiquetaMedio } from './mediosDePago'
+import { todayKey, parseLocalDate } from './helpers'
+import { desglosePorMedio, etiquetaMedio, cierreDelDia } from './mediosDePago'
 
 // ─── PALETA DE COLORES ────────────────────────────────────────────────────────
 const COLORS = {
@@ -169,13 +169,16 @@ function drawSectionTitle(doc, title, y) {
 // REPORTE DE VENTAS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateSalesReport({ appointments, startDate, endDate, businessName }) {
+export function generateSalesReport({ appointments, startDate, endDate, businessName, comparisonChange }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pw  = doc.internal.pageSize.getWidth()
 
   // Filtrar por rango
-  const start = new Date(startDate)
-  const end   = new Date(endDate); end.setHours(23, 59, 59)
+  // parseLocalDate, no new Date(): un 'YYYY-MM-DD' con new Date() se interpreta
+  // como UTC y en Uruguay (UTC-3) corre el rango un día para atrás, dejando
+  // afuera el último día completo del reporte.
+  const start = parseLocalDate(startDate)
+  const end   = parseLocalDate(endDate); end.setHours(23, 59, 59, 999)
 
   const filtered = appointments.filter(a => {
     const d = new Date(a.startTime)
@@ -219,6 +222,11 @@ export function generateSalesReport({ appointments, startDate, endDate, business
       ['Pedidos sin cobrar',      pending.length.toString()],
       ['Ticket promedio',         completed.length > 0 ? formatUYU(totalRevenue / completed.length) : '$0'],
       ['% Cobrado',               totalRevenue > 0 ? `${((totalSales / totalRevenue) * 100).toFixed(1)}%` : '0%'],
+      // Opcional: quien no pasa comparisonChange (p.ej. generatePendingPaymentsReport
+      // no tiene "período anterior") simplemente no ve esta fila.
+      ...(typeof comparisonChange === 'number'
+        ? [['Variación vs. período anterior', `${comparisonChange > 0 ? '+' : ''}${comparisonChange.toFixed(1)}%`]]
+        : []),
     ],
     theme: 'grid',
     styles:       { fontSize: 9, cellPadding: 3 },
@@ -335,8 +343,9 @@ export function generateSalesReport({ appointments, startDate, endDate, business
 export function generateCustomersReport({ appointments, patients, startDate, endDate, businessName }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
-  const start = new Date(startDate)
-  const end   = new Date(endDate); end.setHours(23, 59, 59)
+  // parseLocalDate, no new Date(): ver el comentario en generateSalesReport.
+  const start = parseLocalDate(startDate)
+  const end   = parseLocalDate(endDate); end.setHours(23, 59, 59, 999)
 
   const filtered = appointments.filter(a => {
     const d = new Date(a.startTime)
@@ -529,8 +538,9 @@ export function generateInventoryReport({ products, businessName }) {
 
 export function generateFinancialReport({ appointments, expenses = [], startDate, endDate, businessName }) {
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const start = new Date(startDate)
-  const end   = new Date(endDate); end.setHours(23, 59, 59)
+  // parseLocalDate, no new Date(): ver el comentario en generateSalesReport.
+  const start = parseLocalDate(startDate)
+  const end   = parseLocalDate(endDate); end.setHours(23, 59, 59, 999)
 
   const PAID_STATUSES = new Set(['completed', 'delivered', 'picked'])
 
@@ -539,9 +549,11 @@ export function generateFinancialReport({ appointments, expenses = [], startDate
     return d >= start && d <= end && PAID_STATUSES.has(a.status)
   })
 
+  // e.date es 'YYYY-MM-DD' (fecha del gasto, sin hora): también necesita
+  // parseLocalDate, no new Date() directo, por el mismo motivo.
   const filteredExp = expenses.filter(e => {
-    const d = new Date(e.date)
-    return d >= start && d <= end
+    const d = parseLocalDate(e.date)
+    return d && d >= start && d <= end
   })
 
   const totalRevenue  = filteredApts.reduce((s, a) => s + (a.price || 0), 0)
@@ -793,4 +805,253 @@ export function generatePendingPaymentsReport({ groupedByClient, totalPending, b
   drawFooter(doc)
   doc.save(`cobros-pendientes-${todayKey()}.pdf`)
   return true
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPROBANTE INDIVIDUAL (recibo de una venta/cita puntual)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateReceiptPDF({ appointment, businessName }) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const pw  = doc.internal.pageSize.getWidth()
+  const a   = appointment || {}
+
+  const numero = String(a.id ?? '').slice(-8).toUpperCase() || '—'
+
+  let y = drawHeader(doc, {
+    title: `Comprobante N.º ${numero}`,
+    businessName,
+  })
+
+  autoTable(doc, {
+    startY: y,
+    body: [
+      ['Fecha',    formatDateTime(a.startTime)],
+      ['Cliente',  a.patientName || '—'],
+      ['Contacto', a.patientPhone || a.patientEmail || '—'],
+    ],
+    theme: 'plain',
+    styles:       { fontSize: 10, cellPadding: 2 },
+    columnStyles: { 0: { fontStyle: 'bold', textColor: COLORS.gray, cellWidth: 30 } },
+    margin: { left: 14, right: 14 },
+  })
+
+  y = doc.lastAutoTable.finalY + 8
+  y = drawSectionTitle(doc, 'Detalle', y)
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Producto / Servicio', 'Importe']],
+    body: [[a.productName || a.serviceName || 'Sin detalle', formatUYU(a.price || 0)]],
+    foot: [[
+      { content: 'TOTAL', styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: formatUYU(a.price || 0), styles: { fontStyle: 'bold', textColor: COLORS.primary } },
+    ]],
+    theme: 'grid',
+    styles:       { fontSize: 10, cellPadding: 3 },
+    headStyles:   { fillColor: COLORS.primary, textColor: COLORS.white, fontStyle: 'bold' },
+    footStyles:   { fillColor: COLORS.lightGray },
+    columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
+    margin: { left: 14, right: 14 },
+  })
+
+  y = doc.lastAutoTable.finalY + 10
+
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...(a.paid ? COLORS.secondary : COLORS.warning))
+  doc.text(
+    a.paid ? `Pagado — ${etiquetaMedio(a.paymentMethod)}` : 'Pago pendiente',
+    14, y
+  )
+
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...COLORS.gray)
+  doc.text('¡Gracias por tu compra!', pw / 2, y + 20, { align: 'center' })
+
+  drawFooter(doc)
+  doc.save(`comprobante-${numero}.pdf`)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENTES INACTIVOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateInactiveCustomersReport({ appointments, patients, businessName, thresholdDays = 60 }) {
+  const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const lista = Array.isArray(appointments) ? appointments : []
+  const hoy   = new Date()
+
+  // Última fecha de contacto y plata histórica por cliente. Se agrupa por
+  // patientId cuando existe (más confiable que el nombre, que puede repetirse
+  // o escribirse distinto entre pedidos).
+  const porCliente = new Map()
+  lista.forEach(a => {
+    if (!a.patientName) return
+    const key = a.patientId || a.patientName
+    const actual = porCliente.get(key) || {
+      name: a.patientName, phone: a.patientPhone || '', lastOrder: null, totalSpent: 0, orders: 0,
+    }
+    actual.orders += 1
+    if (a.paid) actual.totalSpent += a.price || 0
+    const cuando = new Date(a.startTime)
+    if (!Number.isNaN(cuando.getTime()) && (!actual.lastOrder || cuando > actual.lastOrder)) {
+      actual.lastOrder = cuando
+      if (a.patientPhone) actual.phone = a.patientPhone
+    }
+    porCliente.set(key, actual)
+  })
+
+  const inactivos = [...porCliente.values()]
+    .filter(c => c.lastOrder)
+    .map(c => ({
+      ...c,
+      diasInactivo: Math.floor((hoy - c.lastOrder) / 86_400_000),
+    }))
+    .filter(c => c.diasInactivo >= thresholdDays)
+    .sort((a, b) => b.diasInactivo - a.diasInactivo)
+
+  const valorEnRiesgo = inactivos.reduce((s, c) => s + c.totalSpent, 0)
+  const promedioDias  = inactivos.length > 0
+    ? Math.round(inactivos.reduce((s, c) => s + c.diasInactivo, 0) / inactivos.length)
+    : 0
+
+  let y = drawHeader(doc, {
+    title: `Clientes inactivos (${thresholdDays}+ días sin comprar)`,
+    businessName,
+  })
+
+  y = drawKPICards(doc, [
+    { label: 'Clientes inactivos', value: inactivos.length,          color: COLORS.warning },
+    { label: 'Valor histórico',    value: formatUYU(valorEnRiesgo),  color: COLORS.danger },
+    { label: 'Días promedio',      value: promedioDias,              color: COLORS.dark },
+  ], y)
+
+  if (inactivos.length === 0) {
+    doc.setFontSize(11)
+    doc.setTextColor(...COLORS.gray)
+    doc.text(`No hay clientes con más de ${thresholdDays} días sin comprar.`, 14, y + 6)
+    drawFooter(doc)
+    doc.save(`clientes-inactivos-${todayKey()}.pdf`)
+    return
+  }
+
+  y = drawSectionTitle(doc, 'Ordenados por tiempo sin comprar (los que más urgen, primero)', y)
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Cliente', 'Teléfono', 'Última compra', 'Días inactivo', 'Gastado históricamente']],
+    body: inactivos.map(c => [
+      c.name,
+      c.phone || '—',
+      formatDate(c.lastOrder.toISOString()),
+      c.diasInactivo.toString(),
+      formatUYU(c.totalSpent),
+    ]),
+    theme: 'striped',
+    styles:       { fontSize: 8, cellPadding: 2.5 },
+    headStyles:   { fillColor: COLORS.warning, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: 42 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 28, halign: 'center' },
+      3: { cellWidth: 28, halign: 'center', fontStyle: 'bold', textColor: COLORS.danger },
+      4: { cellWidth: 35, halign: 'right' },
+    },
+    margin: { left: 14, right: 14 },
+  })
+
+  drawFooter(doc)
+  doc.save(`clientes-inactivos-${todayKey()}.pdf`)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CIERRE DE CAJA DIARIO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateDailyCashCloseReport({ appointments, businessName, date = new Date() }) {
+  const doc    = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const lista  = Array.isArray(appointments) ? appointments : []
+  const cierre = cierreDelDia(lista, date)
+
+  const cobrosDelDia = lista.filter(a => {
+    if (!a?.paid) return false
+    const cuando = a.paymentDate || a.startTime
+    return cuando && new Date(cuando).toDateString() === new Date(date).toDateString()
+  })
+
+  let y = drawHeader(doc, {
+    title:     'Cierre de caja diario',
+    startDate: cierre.dia,
+    endDate:   cierre.dia,
+    businessName,
+  })
+
+  y = drawKPICards(doc, [
+    { label: 'Total cobrado',    value: formatUYU(cierre.total),  color: COLORS.primary },
+    { label: 'Efectivo en caja', value: formatUYU(cierre.enCaja), color: COLORS.secondary },
+    { label: 'Cobros del día',   value: cierre.cantidad,          color: COLORS.dark },
+  ], y)
+
+  if (cierre.cantidad === 0) {
+    doc.setFontSize(11)
+    doc.setTextColor(...COLORS.gray)
+    doc.text('No hay cobros registrados este día.', 14, y + 6)
+    drawFooter(doc)
+    doc.save(`cierre-caja-${cierre.dia}.pdf`)
+    return
+  }
+
+  y = drawSectionTitle(doc, 'Desglose por medio de pago', y)
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Medio de pago', 'Cobros', 'Total', '¿Va a la caja física?']],
+    body: cierre.porMedio.map(m => [
+      `${m.icono} ${m.label}`,
+      m.cantidad.toString(),
+      formatUYU(m.monto),
+      m.enCaja ? 'Sí' : 'No',
+    ]),
+    theme: 'striped',
+    styles:       { fontSize: 8, cellPadding: 2.5 },
+    headStyles:   { fillColor: COLORS.secondary, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: {
+      1: { halign: 'center' },
+      2: { halign: 'right' },
+      3: { halign: 'center' },
+    },
+    didParseCell: (data) => {
+      if (data.column.index === 3 && data.section === 'body') {
+        data.cell.styles.textColor = data.cell.raw === 'Sí' ? COLORS.secondary : COLORS.gray
+        data.cell.styles.fontStyle = 'bold'
+      }
+    },
+    margin: { left: 14, right: 14 },
+  })
+
+  y = doc.lastAutoTable.finalY + 10
+
+  if (y > 220) { doc.addPage(); y = 20 }
+  y = drawSectionTitle(doc, 'Detalle de cobros', y)
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Cliente', 'Producto / Servicio', 'Medio', 'Importe']],
+    body: cobrosDelDia.map(a => [
+      a.patientName || '—',
+      a.productName || a.serviceName || '—',
+      etiquetaMedio(a.paymentMethod),
+      formatUYU(a.price || 0),
+    ]),
+    theme: 'striped',
+    styles:       { fontSize: 8, cellPadding: 2.5 },
+    headStyles:   { fillColor: COLORS.primary, textColor: COLORS.white, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: { 3: { halign: 'right' } },
+    margin: { left: 14, right: 14 },
+  })
+
+  drawFooter(doc)
+  doc.save(`cierre-caja-${cierre.dia}.pdf`)
 }

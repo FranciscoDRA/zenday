@@ -185,18 +185,18 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
     <div style={{
       width: '100vw', height: '100vh',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
+      background: 'linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%)',
     }}>
       <div style={{
-        background: 'white', borderRadius: '24px',
+        background: 'var(--card-bg)', borderRadius: '24px',
         padding: '48px 40px', width: '100%', maxWidth: '440px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+        boxShadow: 'var(--shadow-xl)',
         position: 'relative'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
             width: '72px', height: '72px', borderRadius: '20px',
-            background: 'linear-gradient(135deg, #6366f1, #10b981)',
+            background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
           }}>
@@ -205,10 +205,10 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
               <path d="M30 38L37 45L52 30" stroke="white" strokeWidth="3.5" strokeLinecap="round" />
             </svg>
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
             Configurar negocio
           </h1>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '14px', marginTop: '4px' }}>
             {user?.email}
           </p>
         </div>
@@ -218,28 +218,28 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={() => setMode('create')} style={{
               padding: '16px', borderRadius: '16px',
-              border: '2px solid #6366f1', background: 'rgba(99,102,241,0.05)',
+              border: '2px solid var(--accent-blue)', background: 'color-mix(in srgb, var(--accent-blue) 5%, transparent)',
               cursor: 'pointer', textAlign: 'left',
             }}>
               <div style={{ fontSize: '24px', marginBottom: '6px' }}>🏪</div>
-              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '15px' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '15px' }}>
                 Soy la dueña / primera usuaria
               </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                 Creo el negocio y comparto el código con mi socia
               </div>
             </button>
 
             <button onClick={() => setMode('join')} style={{
               padding: '16px', borderRadius: '16px',
-              border: '2px solid #10b981', background: 'rgba(16,185,129,0.05)',
+              border: '2px solid var(--accent-green)', background: 'color-mix(in srgb, var(--accent-green) 5%, transparent)',
               cursor: 'pointer', textAlign: 'left',
             }}>
               <div style={{ fontSize: '24px', marginBottom: '6px' }}>🤝</div>
-              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '15px' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '15px' }}>
                 Unirme a un negocio existente
               </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                 Tengo el código que me compartió mi socia
               </div>
             </button>
@@ -251,19 +251,19 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
           <div>
             <button onClick={() => setMode(null)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#64748b', fontSize: '13px', marginBottom: '16px', padding: 0
+              color: 'var(--text-tertiary)', fontSize: '13px', marginBottom: '16px', padding: 0
             }}>← Volver</button>
 
             <div style={{
-              background: '#f8fafc', borderRadius: '16px',
+              background: 'var(--bg-tertiary)', borderRadius: '16px',
               padding: '20px', marginBottom: '16px',
               border: '1px solid var(--border)'
             }}>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '8px', fontWeight: 600 }}>
                 📋 Tu código de negocio
               </div>
               <div style={{
-                fontSize: '22px', fontWeight: 800, color: '#1e293b',
+                fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)',
                 letterSpacing: '0.1em', marginBottom: '12px',
                 fontFamily: 'monospace'
               }}>
@@ -281,9 +281,9 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
             </div>
 
             <div style={{
-              background: 'rgba(99,102,241,0.05)', borderRadius: '12px',
+              background: 'color-mix(in srgb, var(--accent-blue) 5%, transparent)', borderRadius: '12px',
               padding: '12px 16px', marginBottom: '20px',
-              border: '1px solid rgba(99,102,241,0.15)'
+              border: '1px solid color-mix(in srgb, var(--accent-blue) 15%, transparent)'
             }}>
               <p style={{ fontSize: '13px', color: 'var(--accent-blue)', margin: 0, fontWeight: 500 }}>
                 💡 Compartí este código con tu socia por WhatsApp. Ella lo va a necesitar para unirse y ver los mismos datos.
@@ -292,7 +292,7 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
 
             <button onClick={() => onComplete(businessId)} style={{
               width: '100%', padding: '14px',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
               border: 'none', borderRadius: '12px',
               color: 'white', fontSize: '16px', fontWeight: 600, cursor: 'pointer',
             }}>
@@ -306,12 +306,12 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
           <div>
             <button onClick={() => setMode(null)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#64748b', fontSize: '13px', marginBottom: '16px', padding: 0
+              color: 'var(--text-tertiary)', fontSize: '13px', marginBottom: '16px', padding: 0
             }}>← Volver</button>
 
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 600,
-                color: '#374151', marginBottom: '6px' }}>
+                color: 'var(--text-secondary)', marginBottom: '6px' }}>
                 Código de negocio
               </label>
               <input
@@ -324,15 +324,15 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
                 onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
                 onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
-              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-quaternary)', marginTop: '6px' }}>
                 El código tiene el formato XXXX-XXXX-XXXX
               </p>
             </div>
 
             {error && (
               <div style={{
-                background: error.includes('✅') ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-                border: `1px solid ${error.includes('✅') ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                background: error.includes('✅') ? 'color-mix(in srgb, var(--accent-green) 8%, transparent)' : 'color-mix(in srgb, var(--accent-red) 8%, transparent)',
+                border: `1px solid ${error.includes('✅') ? 'color-mix(in srgb, var(--accent-green) 20%, transparent)' : 'color-mix(in srgb, var(--accent-red) 20%, transparent)'}`,
                 borderRadius: '10px', padding: '10px 14px',
                 color: error.includes('✅') ? 'var(--accent-green)' : 'var(--accent-red)',
                 fontSize: '13px', marginBottom: '16px',
@@ -343,7 +343,7 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
 
             <button onClick={handleJoin} disabled={loading} style={{
               width: '100%', padding: '14px',
-              background: loading ? '#94a3b8' : 'linear-gradient(135deg, #10b981, #059669)',
+              background: loading ? 'var(--text-quaternary)' : 'linear-gradient(135deg, var(--accent-green), var(--emerald-dark))',
               border: 'none', borderRadius: '12px',
               color: 'white', fontSize: '16px', fontWeight: 600,
               cursor: loading ? 'wait' : 'pointer',
@@ -357,7 +357,7 @@ export function BusinessSetupScreen({ user, businessId, onComplete }) {
               disabled={forceCreating || !joinCode.trim()}
               style={{
                 width: '100%', marginTop: '12px', padding: '10px',
-                background: 'transparent', border: '1px solid #f59e0b',
+                background: 'transparent', border: '1px solid var(--accent-amber)',
                 borderRadius: '10px', color: 'var(--accent-amber)', fontSize: '12px',
                 cursor: (forceCreating || !joinCode.trim()) ? 'not-allowed' : 'pointer',
                 fontWeight: 500, opacity: (forceCreating || !joinCode.trim()) ? 0.5 : 1

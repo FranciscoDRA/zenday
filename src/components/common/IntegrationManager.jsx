@@ -655,7 +655,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,#6366f1,#8b5cf6)',
+        <div style={{ padding:'16px 20px', background:'linear-gradient(135deg,var(--accent-blue),var(--accent-purple))',
           display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
             <h3 style={{ margin:0, color:'white', fontSize:16, fontWeight:800 }}>🔌 Integraciones</h3>
@@ -854,7 +854,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                 { label:'ZenDay',        value:matches.length,   color:'var(--accent-blue)' },
                 { label:'Matches',       value:stats.matched,    color:'var(--accent-green)' },
                 { label:'Diferencias',   value:stats.withDiff,   color:'var(--accent-amber)' },
-                { label:'Seleccionados', value:stats.selected,   color:'#3b82f6' },
+                { label:'Seleccionados', value:stats.selected,   color:'var(--sky)' },
               ].map((s, i) => (
                 <div key={s.label} style={{ flex:1, textAlign:'center', padding:'10px 0',
                   borderRight: i < 3 ? '1px solid var(--border)' : 'none',
@@ -871,7 +871,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                   <div key={m.zenProduct.id}
                     style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
                       borderRadius:12, border:'1px solid var(--border)',
-                      background: m.selected ? 'rgba(99,102,241,0.05)' : 'var(--bg-tertiary)',
+                      background: m.selected ? 'color-mix(in srgb, var(--accent-blue) 5%, transparent)' : 'var(--bg-tertiary)',
                       opacity: m.matched ? 1 : 0.55 }}>
                     <input type="checkbox" checked={m.selected} disabled={!m.matched}
                       onChange={() => toggleSelected(m.zenProduct.id)}
@@ -915,8 +915,8 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                     <span style={{ fontSize:10, padding:'2px 7px', borderRadius:20,
                       flexShrink:0, fontWeight:700,
                       background: m.matched
-                        ? m.score >= 0.95 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'
-                        : 'rgba(239,68,68,0.10)',
+                        ? m.score >= 0.95 ? 'color-mix(in srgb, var(--accent-green) 15%, transparent)' : 'color-mix(in srgb, var(--accent-amber) 15%, transparent)'
+                        : 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
                       color: m.matched                        ? m.score >= 0.95 ? 'var(--accent-green)' : 'var(--accent-amber)'
                         : 'var(--accent-red)' }}>
                       {m.matched
@@ -942,7 +942,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
                   fontFamily:'inherit', fontWeight:700, color:'white',
                   cursor: stats.selected === 0 ? 'not-allowed' : 'pointer',
                   background: stats.selected === 0
-                    ? 'var(--bg-tertiary)' : 'linear-gradient(135deg,#6366f1,#10b981)',
+                    ? 'var(--bg-tertiary)' : 'linear-gradient(135deg,var(--accent-blue),var(--accent-green))',
                   opacity: stats.selected === 0 ? .5 : 1 }}>
                 {syncing
                   ? `⏳ Sincronizando ${syncProgress.current}/${syncProgress.total}...`
@@ -968,8 +968,8 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
               {syncResult.map((r, i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center',
                   justifyContent:'space-between', padding:'10px 14px', borderRadius:10,
-                  background: r.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-                  border:`1px solid ${r.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+                  background: r.ok ? 'color-mix(in srgb, var(--accent-green) 8%, transparent)' : 'color-mix(in srgb, var(--accent-red) 8%, transparent)',
+                  border:`1px solid ${r.ok ? 'color-mix(in srgb, var(--accent-green) 30%, transparent)' : 'color-mix(in srgb, var(--accent-red) 30%, transparent)'}` }}>
                   <span style={{ fontSize:13, fontWeight:600 }}>
                     {r.ok ? '✅' : '❌'} {r.name}
                   </span>
@@ -985,7 +985,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
             </div>
             <button onClick={close}
               style={{ marginTop:20, width:'100%', padding:'12px',
-                background:'linear-gradient(135deg,#6366f1,#10b981)', border:'none',
+                background:'linear-gradient(135deg,var(--accent-blue),var(--accent-green))', border:'none',
                 borderRadius:12, color:'white', fontWeight:700, cursor:'pointer',
                 fontSize:14, fontFamily:'inherit' }}>
               Cerrar
@@ -1001,9 +1001,9 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
     <>
       <button onClick={() => setIsOpen(true)}
         style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 18px',
-          background:'linear-gradient(135deg,#6366f1,#8b5cf6)', border:'none', borderRadius:40,
+          background:'linear-gradient(135deg,var(--accent-blue),var(--accent-purple))', border:'none', borderRadius:40,
           color:'white', fontWeight:700, cursor:'pointer', fontSize:13, fontFamily:'inherit',
-          boxShadow:'0 4px 12px rgba(99,102,241,0.3)' }}>
+          boxShadow:'0 4px 12px color-mix(in srgb, var(--accent-blue) 30%, transparent)' }}>
         🔌 Integraciones
         {saved.length > 0 && (
           <span style={{ background:'rgba(255,255,255,0.25)', borderRadius:20,

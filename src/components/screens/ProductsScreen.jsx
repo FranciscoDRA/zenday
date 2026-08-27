@@ -561,7 +561,7 @@ export function ProductsScreen({ nav, products, setProducts, appointments = [], 
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                   flex: 1, padding: '12px', border: 'none', background: 'transparent', cursor: 'pointer',
                   fontFamily: 'inherit', fontSize: 13,
-                  borderBottom: activeTab === tab.id ? '2px solid #6366f1' : '2px solid transparent',
+                  borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
                   fontWeight: activeTab === tab.id ? 700 : 400,
                   color: activeTab === tab.id ? 'var(--accent-blue)' : 'var(--text-secondary)',
                 }}>
@@ -674,7 +674,7 @@ export function ProductsScreen({ nav, products, setProducts, appointments = [], 
                 {editingProduct ? '💾 Actualizar' : '💾 Guardar'}
               </button>
               <button onClick={handleSaveAndPublish}
-                style={{ padding: '11px 16px', background: 'linear-gradient(135deg, #10b981, #6366f1)',
+                style={{ padding: '11px 16px', background: 'linear-gradient(135deg, var(--accent-green), var(--accent-blue))',
                   border: 'none', borderRadius: 12, color: 'white', fontWeight: 700,
                   cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
                 {editingProduct ? '🌐 Actualizar y publicar' : '🌐 Guardar y publicar'}

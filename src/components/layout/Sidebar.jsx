@@ -135,7 +135,7 @@ export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onL
           >
             <div style={{
               width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, #6366f1, #10b981)',
+              background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'white', fontWeight: 700, fontSize: '15px',
             }}>
@@ -184,7 +184,7 @@ export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onL
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{
                       width: '40px', height: '40px', borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #6366f1, #10b981)',
+                      background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       color: 'white', fontWeight: 700, fontSize: '16px',
                     }}>

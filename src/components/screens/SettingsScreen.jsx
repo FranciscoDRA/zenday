@@ -33,12 +33,16 @@ const SECTIONS = [
   { id: 'data',       label: 'Datos',      icon: '📦' },
 ]
 
+// Los swatches usan los tokens FIJOS (--indigo, --rose, etc.), no
+// --accent-blue/--accent-green: esos dos cambian con el tema activo, así que
+// si se usaran acá, la vista previa de "Violeta" mostraría el color del tema
+// que ya está puesto en vez del que representa cada opción.
 const THEME_COLORS = [
-  { id: 'violet',  name: 'Violeta',    color: 'var(--accent-blue)' },
-  { id: 'rose',    name: 'Rosa',       color: '#f43f5e' },
-  { id: 'cyan',    name: 'Cyan',       color: '#06b6d4' },
-  { id: 'amber',   name: 'Ámbar',      color: 'var(--accent-amber)' },
-  { id: 'emerald', name: 'Esmeralda',  color: 'var(--accent-green)' },
+  { id: 'violet',  name: 'Violeta',    color: 'var(--indigo)' },
+  { id: 'rose',    name: 'Rosa',       color: 'var(--rose)' },
+  { id: 'cyan',    name: 'Cyan',       color: 'var(--sky)' },
+  { id: 'amber',   name: 'Ámbar',      color: 'var(--amber)' },
+  { id: 'emerald', name: 'Esmeralda',  color: 'var(--emerald)' },
 ]
 
 const LICENSE_KEY_PATTERN = /^ZENDAY-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/
@@ -658,7 +662,7 @@ export function SettingsScreen({
                       {/* Salir del negocio */}
                       <button onClick={handleLeaveBusiness} disabled={leavingBusiness} style={{
                         width: '100%', padding: '10px',
-                        background: 'transparent', border: '1px solid #ef4444',
+                        background: 'transparent', border: '1px solid var(--accent-red)',
                         borderRadius: '10px', color: 'var(--accent-red)',
                         fontWeight: 500, cursor: 'pointer', fontSize: '13px'
                       }}>

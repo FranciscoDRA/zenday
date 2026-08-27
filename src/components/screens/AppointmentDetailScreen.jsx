@@ -4,6 +4,7 @@ import { PaymentDateModal } from '../common/PaymentDateModal'
 import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { formatCurrency, toLocalDateKey, todayKey } from '../../utils/helpers'
+import { generateReceiptPDF } from '../../utils/pdfReportGenerator'
 
 
 // ============================================
@@ -31,15 +32,15 @@ const STATUS_LABELS = {
 }
 
 const STATUS_COLORS = {
-  scheduled: '#3498db',
-  confirmed: '#2ecc71',
-  'in-progress': '#f39c12',
-  completed: '#27ae60',
-  cancelled: '#e74c3c',
-  'no-show': '#95a5a6',
-  pending: '#f39c12',
-  delivered: '#27ae60',
-  picked: '#3498db'
+  scheduled: 'var(--sky)',
+  confirmed: 'var(--emerald)',
+  'in-progress': 'var(--amber)',
+  completed: 'var(--emerald-dark)',
+  cancelled: 'var(--rose)',
+  'no-show': 'var(--text-quaternary)',
+  pending: 'var(--amber)',
+  delivered: 'var(--emerald-dark)',
+  picked: 'var(--sky)'
 }
 
 // ============================================
@@ -162,14 +163,14 @@ export function AppointmentDetailScreen({
 
   const getAvailableStatuses = useCallback((currentStatus) => {
     const allStatuses = [
-      { value: 'scheduled', label: '📅 Agendada', color: '#3498db' },
-      { value: 'confirmed', label: '✅ Confirmada', color: '#2ecc71' },
-      { value: 'in-progress', label: '⏳ En curso', color: '#f39c12' },
-      { value: 'completed', label: '✔️ Completada', color: '#27ae60' },
-      { value: 'delivered', label: '📦 Entregado', color: '#27ae60' },
-      { value: 'picked', label: '🛒 Retirado', color: '#3498db' },
-      { value: 'cancelled', label: '❌ Cancelada', color: '#e74c3c' },
-      { value: 'no-show', label: '🚫 No asistió', color: '#95a5a6' }
+      { value: 'scheduled', label: '📅 Agendada', color: 'var(--sky)' },
+      { value: 'confirmed', label: '✅ Confirmada', color: 'var(--emerald)' },
+      { value: 'in-progress', label: '⏳ En curso', color: 'var(--amber)' },
+      { value: 'completed', label: '✔️ Completada', color: 'var(--emerald-dark)' },
+      { value: 'delivered', label: '📦 Entregado', color: 'var(--emerald-dark)' },
+      { value: 'picked', label: '🛒 Retirado', color: 'var(--sky)' },
+      { value: 'cancelled', label: '❌ Cancelada', color: 'var(--rose)' },
+      { value: 'no-show', label: '🚫 No asistió', color: 'var(--text-quaternary)' }
     ]
     
     const invalidForCurrent = INVALID_TRANSITIONS[currentStatus] || []
@@ -918,7 +919,7 @@ ${appointment.paymentDate ? `Fecha de pago: ${new Date(appointment.paymentDate).
             style={{
               width: '100%',
               padding: '14px',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
+              background: 'linear-gradient(135deg, var(--accent-green), var(--emerald-dark))',
               border: 'none',
               borderRadius: '40px',
               color: 'white',
@@ -936,6 +937,32 @@ ${appointment.paymentDate ? `Fecha de pago: ${new Date(appointment.paymentDate).
           </button>
         </div>
       )}
+
+      {/* Comprobante individual: el pedido/cita puntual, para darle o mandarle
+          al cliente. Distinto de los reportes de "Reportes", que son de todo
+          un período. */}
+      <div className="detail-section">
+        <button
+          onClick={() => generateReceiptPDF({ appointment })}
+          style={{
+            width: '100%',
+            padding: '12px',
+            background: 'transparent',
+            border: '1.5px solid var(--accent-blue)',
+            borderRadius: '40px',
+            color: 'var(--accent-blue)',
+            fontWeight: 600,
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+          }}
+        >
+          🧾 Generar comprobante
+        </button>
+      </div>
 
       {/* Modal para registrar pago (nuevo) */}
       {showPaymentModal && (
@@ -1123,7 +1150,7 @@ ${appointment.paymentDate ? `Fecha de pago: ${new Date(appointment.paymentDate).
               width: '100%',
               padding: '12px',
               background: 'transparent',
-              border: '1px solid #ef4444',
+              border: '1px solid var(--accent-red)',
               borderRadius: '40px',
               color: 'var(--accent-red)',
               fontWeight: 500,

@@ -1,11 +1,19 @@
 import React, { useState, useMemo } from 'react'
-import { normalizarNotas, toLocalDateKey } from '../../utils/helpers'
+import { normalizarNotas, toLocalDateKey, parseLocalDate } from '../../utils/helpers'
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
+const SOLO_FECHA = /^\d{4}-\d{2}-\d{2}$/
+
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
+  // Las citas llegan acá como 'YYYY-MM-DD' (vía toLocalDateKey, más abajo).
+  // `new Date('YYYY-MM-DD')` la interpreta como medianoche UTC: en UTC-3 eso
+  // muestra el día anterior. parseLocalDate arma la fecha en hora local.
+  // Las notas sí traen datetime completo (new Date().toISOString()), donde
+  // new Date(...) es correcto porque representa un instante, no un día.
+  const d = SOLO_FECHA.test(dateStr) ? parseLocalDate(dateStr) : new Date(dateStr)
+  if (!d || isNaN(d.getTime())) return ''
   return d.toLocaleDateString('es-UY', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -26,28 +34,28 @@ const EVENT_CONFIG = {
   appointment: {
     label: 'Cita',
     dotColor: 'var(--accent-blue)',
-    badgeBg: 'rgba(99,102,241,0.1)',
+    badgeBg: 'color-mix(in srgb, var(--accent-blue) 10%, transparent)',
     badgeColor: 'var(--accent-blue)',
     icon: '📅',
   },
   payment: {
     label: 'Pago recibido',
     dotColor: 'var(--accent-green)',
-    badgeBg: 'rgba(16,185,129,0.1)',
+    badgeBg: 'color-mix(in srgb, var(--accent-green) 10%, transparent)',
     badgeColor: 'var(--accent-green)',
     icon: '💰',
   },
   note: {
     label: 'Nota',
     dotColor: 'var(--accent-amber)',
-    badgeBg: 'rgba(245,158,11,0.1)',
-    badgeColor: '#b45309',
+    badgeBg: 'color-mix(in srgb, var(--accent-amber) 10%, transparent)',
+    badgeColor: 'var(--accent-amber)',
     icon: '📝',
   },
   pending: {
     label: 'Pago pendiente',
     dotColor: 'var(--accent-red)',
-    badgeBg: 'rgba(239,68,68,0.1)',
+    badgeBg: 'color-mix(in srgb, var(--accent-red) 10%, transparent)',
     badgeColor: 'var(--accent-red)',
     icon: '⚠️',
   },

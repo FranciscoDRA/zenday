@@ -553,9 +553,9 @@ export function NewAppointmentScreen({
           <div style={{ 
             padding: '16px', 
             borderRadius: '12px', 
-            background: '#fef3c7',
-            border: '1px solid #f59e0b',
-            color: '#92400e'
+            background: 'color-mix(in srgb, var(--accent-amber) 15%, transparent)',
+            border: '1px solid var(--accent-amber)',
+            color: 'var(--accent-amber)'
           }}>
             <div style={{ fontWeight: 600, marginBottom: '8px' }}>
               ⚠️ No hay clientes registrados
@@ -602,7 +602,7 @@ export function NewAppointmentScreen({
         )}
         
         {formData.patientName && (
-          <div style={{ marginTop: '8px', fontSize: '13px', color: '#64748b' }}>
+          <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-tertiary)' }}>
             📞 {formData.patientPhone || 'Sin teléfono'} | ✉️ {formData.patientEmail || 'Sin email'}
           </div>
         )}
@@ -630,21 +630,46 @@ export function NewAppointmentScreen({
       {/* Duración */}
       <div style={{ marginBottom: '20px' }}>
         <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>⏱️ Duración</label>
-        <select
-          value={formData.duration}
-          onChange={(e) => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-          style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
-        >
-          <option value="15">15 minutos</option>
-          <option value="30">30 minutos</option>
-          <option value="45">45 minutos</option>
-          <option value="60">1 hora</option>
-          <option value="90">1.5 horas</option>
-          <option value="120">2 horas</option>
-          <option value="150">2.5 horas</option>
-          <option value="180">3 horas</option>
-          <option value="240">4 horas</option>
-        </select>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <input
+              type="number"
+              min="0"
+              max="23"
+              value={Math.floor((formData.duration || 0) / 60)}
+              onChange={(e) => {
+                const horas = Math.max(0, parseInt(e.target.value, 10) || 0)
+                const minutosActuales = (formData.duration || 0) % 60
+                setFormData(prev => ({ ...prev, duration: horas * 60 + minutosActuales }))
+              }}
+              style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', boxSizing: 'border-box' }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>horas</div>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-tertiary)', marginTop: '-14px' }}>:</div>
+          <div style={{ flex: 1 }}>
+            <input
+              type="number"
+              min="0"
+              max="59"
+              step="5"
+              value={(formData.duration || 0) % 60}
+              onChange={(e) => {
+                let minutos = parseInt(e.target.value, 10) || 0
+                minutos = Math.min(59, Math.max(0, minutos))
+                const horasActuales = Math.floor((formData.duration || 0) / 60)
+                setFormData(prev => ({ ...prev, duration: horasActuales * 60 + minutos }))
+              }}
+              style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', boxSizing: 'border-box' }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>minutos</div>
+          </div>
+        </div>
+        {formData.duration > 0 && (
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            Total: {Math.floor(formData.duration / 60)}h {formData.duration % 60}min ({formData.duration} minutos)
+          </div>
+        )}
       </div>
 
       {/* Fecha */}
@@ -657,7 +682,7 @@ export function NewAppointmentScreen({
           style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
         {formData.date && (
-          <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
             {formattedDate}
           </div>
         )}
@@ -672,7 +697,7 @@ export function NewAppointmentScreen({
           onChange={(e) => setFormData(prev => ({...prev, time: e.target.value}))}
           style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
-        <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
           {formData.time && `Hora seleccionada: ${formattedTime}`}
         </div>
       </div>
@@ -691,7 +716,7 @@ export function NewAppointmentScreen({
           ${displayPrice.toLocaleString()} UYU
         </div>
         {consultationConfig?.pricePerHour && consultationConfig?.hourlyRate > 0 && (
-          <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
             💰 Tarifa: ${consultationConfig.hourlyRate}/hora × {(formData.duration / 60).toFixed(1)}h = ${Math.round((formData.duration / 60) * consultationConfig.hourlyRate).toLocaleString()} UYU
           </div>
         )}
@@ -719,7 +744,7 @@ export function NewAppointmentScreen({
           onChange={(e) => setFormData(prev => ({...prev, meetingLink: e.target.value}))}
           style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
         />
-        <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
           🔗 Se incluirá en el recordatorio y mensaje de WhatsApp
         </div>
       </div>
@@ -794,7 +819,7 @@ export function NewAppointmentScreen({
             {/* Preview de WhatsApp - mejora para modo profesional */}
             {formData.sendWhatsApp && formData.patientPhone && (
               <details style={{ marginTop: '12px' }}>
-                <summary style={{ fontSize: '12px', color: '#64748b', cursor: 'pointer' }}>
+                <summary style={{ fontSize: '12px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>
                   📋 Ver preview del mensaje WhatsApp
                 </summary>
                 <div style={{ 
@@ -850,7 +875,7 @@ export function NewAppointmentScreen({
                 }}
                 style={{ width: '80px', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
               />
-              <span style={{ color: '#64748b' }}>veces</span>
+              <span style={{ color: 'var(--text-tertiary)' }}>veces</span>
             </div>
           )}
         </div>
@@ -927,7 +952,7 @@ export function NewAppointmentScreen({
           onClick={handleSave}
           style={{ 
             padding: '14px 32px', 
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
             border: 'none', 
             borderRadius: '40px', 
             color: 'white', 

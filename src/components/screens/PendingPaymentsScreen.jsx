@@ -742,7 +742,7 @@ export function PendingPaymentsScreen({
                       width: '100%',
                       padding: '12px 12px 12px 28px',
                       borderRadius: '10px',
-                      border: priceError ? '1.5px solid #ef4444' : '1.5px solid var(--border)',
+                      border: priceError ? '1.5px solid var(--accent-red)' : '1.5px solid var(--border)',
                       background: 'var(--bg-tertiary)',
                       fontSize: '14px',
                       fontFamily: 'monospace'

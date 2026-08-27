@@ -20,12 +20,12 @@ function splitLocal(iso) {
 // ─── CONSTANTES ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
   { id: 'health',   label: '🏃 Salud',      color: 'var(--accent-green)' },
-  { id: 'work',     label: '💼 Trabajo',     color: '#3b82f6' },
-  { id: 'social',   label: '🎉 Social',      color: '#ec4899' },
+  { id: 'work',     label: '💼 Trabajo',     color: 'var(--sky)' },
+  { id: 'social',   label: '🎉 Social',      color: 'var(--accent-pink)' },
   { id: 'home',     label: '🏠 Hogar',       color: 'var(--accent-amber)' },
-  { id: 'study',    label: '📚 Estudio',     color: '#8b5cf6' },
+  { id: 'study',    label: '📚 Estudio',     color: 'var(--accent-purple)' },
   { id: 'finance',  label: '💰 Finanzas',    color: 'var(--accent-green)' },
-  { id: 'other',    label: '✨ Otro',         color: '#6b7280' },
+  { id: 'other',    label: '✨ Otro',         color: 'var(--text-quaternary)' },
 ]
 
 const CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]))
@@ -74,7 +74,7 @@ function EventForm({ initial = EMPTY_FORM, onSave, onCancel }) {
   return (
     <div style={{
       background: 'var(--bg-secondary)', borderRadius: 18, padding: 20,
-      marginBottom: 20, border: `2px solid ${cat?.color || '#6b7280'}30`,
+      marginBottom: 20, border: `2px solid color-mix(in srgb, ${cat?.color || 'var(--text-quaternary)'} 19%, transparent)`,
     }}>
       <div style={{ marginBottom: 14 }}>
         <input
@@ -109,7 +109,7 @@ function EventForm({ initial = EMPTY_FORM, onSave, onCancel }) {
             onClick={() => set('category', c.id)}
             style={{
               padding: '6px 12px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12,
-              background: form.category === c.id ? c.color : `${c.color}20`,
+              background: form.category === c.id ? c.color : `color-mix(in srgb, ${c.color} 13%, transparent)`,
               color:      form.category === c.id ? 'white'  : c.color,
               fontWeight: form.category === c.id ? 600 : 400,
               transition: 'all 0.15s',
@@ -166,7 +166,7 @@ function EventForm({ initial = EMPTY_FORM, onSave, onCancel }) {
         <button onClick={onCancel} style={btnSecondary}>Cancelar</button>
         <button
           onClick={handleSubmit}
-          style={{ ...btnPrimary, background: cat?.color || '#6b7280' }}
+          style={{ ...btnPrimary, background: cat?.color || 'var(--text-quaternary)' }}
           disabled={!form.title.trim() || !form.date}
         >
           Guardar
@@ -207,7 +207,7 @@ function EventCard({ event, onEdit, onDelete }) {
         </div>
         <span style={{
           fontSize: 10, padding: '2px 8px', borderRadius: 20,
-          background: `${cat.color}20`, color: cat.color, whiteSpace: 'nowrap',
+          background: `color-mix(in srgb, ${cat.color} 13%, transparent)`, color: cat.color, whiteSpace: 'nowrap',
         }}>
           {cat.label}
         </span>
@@ -390,7 +390,7 @@ export function PersonalAgendaScreen({ nav }) {
               {dayEvs.length > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 2, marginTop: 4, flexWrap: 'wrap' }}>
                   {dayEvs.slice(0, 3).map((e, j) => (
-                    <div key={j} style={{ width: 6, height: 6, borderRadius: '50%', background: CAT_MAP[e.category]?.color || '#6b7280' }} />
+                    <div key={j} style={{ width: 6, height: 6, borderRadius: '50%', background: CAT_MAP[e.category]?.color || 'var(--text-quaternary)' }} />
                   ))}
                 </div>
               )}
@@ -450,7 +450,7 @@ export function PersonalAgendaScreen({ nav }) {
                       <div
                         key={j}
                         className="month-appointment"
-                        style={{ borderLeft: `3px solid ${cat.color}`, background: `${cat.color}15` }}
+                        style={{ borderLeft: `3px solid ${cat.color}`, background: `color-mix(in srgb, ${cat.color} 8%, transparent)` }}
                         onClick={ev => { ev.stopPropagation(); setSelectedDate(day.date); setView('day') }}
                       >
                         <span style={{ fontSize: 9 }}>
@@ -504,9 +504,9 @@ export function PersonalAgendaScreen({ nav }) {
       {/* ESTADÍSTICAS */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
-          { label: 'Hoy',        value: stats.today,    color: '#3b82f6' },
+          { label: 'Hoy',        value: stats.today,    color: 'var(--sky)' },
           { label: 'Próximos',   value: stats.upcoming, color: 'var(--accent-green)' },
-          { label: 'Total',      value: stats.total,    color: '#8b5cf6' },
+          { label: 'Total',      value: stats.total,    color: 'var(--accent-purple)' },
         ].map(s => (
           <div key={s.label} style={{
             flex: 1, minWidth: 90, background: 'var(--bg-secondary)',
@@ -603,7 +603,7 @@ const inputStyle = {
 
 const btnPrimary = {
   padding: '10px 20px', borderRadius: 20, border: 'none',
-  background: '#3b82f6', color: 'white', fontWeight: 600,
+  background: 'var(--accent-blue)', color: 'white', fontWeight: 600,
   fontSize: 14, cursor: 'pointer',
 }
 

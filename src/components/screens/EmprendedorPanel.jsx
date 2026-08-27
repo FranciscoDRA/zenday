@@ -4,13 +4,13 @@ import { useConfirm } from '../../contexts/ConfirmContext'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
-const COLORES = ['var(--accent-green)', '#3b82f6', 'var(--accent-red)', 'var(--accent-amber)', '#8b5cf6', '#ec4899']
+const COLORES = ['var(--accent-green)', 'var(--sky)', 'var(--accent-red)', 'var(--accent-amber)', 'var(--accent-purple)', 'var(--accent-pink)']
 
 const ESTADOS = {
   PENDIENTE:  { label: '⏳ Pendiente',  color: 'var(--accent-amber)' },
-  EN_PROCESO: { label: '🔨 En proceso', color: '#3b82f6' },
+  EN_PROCESO: { label: '🔨 En proceso', color: 'var(--sky)' },
   COMPLETADO: { label: '✅ Completado', color: 'var(--accent-green)' },
-  ENTREGADO:  { label: '📦 Entregado',  color: '#8b5cf6' },
+  ENTREGADO:  { label: '📦 Entregado',  color: 'var(--accent-purple)' },
 }
 
 const EMPTY_FORM = { 
@@ -853,7 +853,7 @@ export default function EmprendedorPanel({
                   width: '100%',
                   padding: '12px 12px 12px 28px',
                   borderRadius: '12px',
-                  border: errorEnvio ? '1px solid #ef4444' : '1px solid var(--border)',
+                  border: errorEnvio ? '1px solid var(--accent-red)' : '1px solid var(--border)',
                   background: 'var(--bg-primary)',
                   fontSize: '14px'
                 }}
@@ -918,7 +918,7 @@ export default function EmprendedorPanel({
                     borderRadius: '50%',
                     background: c,
                     border: nuevoPedido.color === c ? '3px solid #fff' : 'none',
-                    boxShadow: nuevoPedido.color === c ? '0 0 0 2px #6366f1' : 'none',
+                    boxShadow: nuevoPedido.color === c ? '0 0 0 2px var(--accent-blue)' : 'none',
                     cursor: 'pointer'
                   }}
                   onClick={() => setNuevoPedido(prev => ({ ...prev, color: c }))}
@@ -936,7 +936,7 @@ export default function EmprendedorPanel({
               padding: '14px',
               background: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio)
                 ? 'var(--bg-tertiary)'
-                : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                : 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
               border: 'none',
               borderRadius: '12px',
               color: (!nuevoPedido.articuloId || !nuevoPedido.cliente || !nuevoPedido.inicio || !nuevoPedido.fin || productoSeleccionadoSinStock || errorEnvio)
@@ -1049,7 +1049,7 @@ export default function EmprendedorPanel({
                         <div className="card-acciones" style={{ marginTop: '12px', display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
                           {p.estado === 'PENDIENTE' && (
                             <button onClick={() => { cambiarEstado(p.id, 'EN_PROCESO'); setPedidoSeleccionadoId(null) }}
-                              style={{ padding: '6px 12px', background: '#3b82f6', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
+                              style={{ padding: '6px 12px', background: 'var(--sky)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
                               🔨 En proceso
                             </button>
                           )}
@@ -1061,7 +1061,7 @@ export default function EmprendedorPanel({
                           )}
                           {p.estado === 'COMPLETADO' && (
                             <button onClick={() => entregarPedido(p)}
-                              style={{ padding: '6px 12px', background: '#8b5cf6', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
+                              style={{ padding: '6px 12px', background: 'var(--accent-purple)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>
                               📦 Entregar
                             </button>
                           )}

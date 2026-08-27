@@ -25,12 +25,12 @@ const openWhatsApp = (phoneNumber, e) => {
 }
 
 const STATUS_COLORS = {
-  scheduled:   '#3b82f6',
+  scheduled:   'var(--sky)',
   confirmed:   'var(--accent-green)',
   'in-progress': 'var(--accent-amber)',
   completed:   'var(--accent-green)',
   cancelled:   'var(--accent-red)',
-  'no-show':   '#6b7280',
+  'no-show':   'var(--text-quaternary)',
   pending:     'var(--accent-amber)',
   delivered:   'var(--accent-green)',
 }
@@ -51,7 +51,7 @@ function ClientCard({ apt, nav, onStatusChange, onMarkAsPaid, compact, userMode 
   const waNumber = formatPhoneForWhatsApp(apt.patientPhone)
   const isPaid    = apt.paid === true || apt.paymentStatus === 'paid'
   const price     = apt.price || 0
-  const statusColor = STATUS_COLORS[apt.status] || '#6b7280'
+  const statusColor = STATUS_COLORS[apt.status] || 'var(--text-quaternary)'
 
   return (
     <div
@@ -85,7 +85,7 @@ function ClientCard({ apt, nav, onStatusChange, onMarkAsPaid, compact, userMode 
       <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{
           fontSize: 10, fontWeight: 500, padding: '2px 7px',
-          borderRadius: 20, background: `${statusColor}20`, color: statusColor,
+          borderRadius: 20, background: `color-mix(in srgb, ${statusColor} 13%, transparent)`, color: statusColor,
         }}>
           {STATUS_LABELS[apt.status] || apt.status}
         </span>
@@ -95,7 +95,7 @@ function ClientCard({ apt, nav, onStatusChange, onMarkAsPaid, compact, userMode 
             style={{
               fontSize: 10, fontWeight: 500, padding: '2px 7px',
               borderRadius: 20,
-              background: isPaid ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+              background: isPaid ? 'color-mix(in srgb, var(--accent-green) 15%, transparent)' : 'color-mix(in srgb, var(--accent-amber) 15%, transparent)',
               color:      isPaid ? 'var(--accent-green)'              : 'var(--accent-amber)',
               cursor:     (!isPaid && ['completed','delivered','picked'].includes(apt.status)) ? 'pointer' : 'default',
             }}
@@ -454,7 +454,7 @@ export function AgendaScreen({
                       draggable={dragEnabled}
                       onDragStart={e => { e.dataTransfer.setData('text/plain', String(a.id)); e.dataTransfer.effectAllowed = 'move' }}
                       onClick={e => { e.stopPropagation(); nav.navigate('detail', { appointmentId: a.id }) }}
-                      style={{ borderLeft: `3px solid ${a.color || STATUS_COLORS[a.status] || '#6b7280'}` }}
+                      style={{ borderLeft: `3px solid ${a.color || STATUS_COLORS[a.status] || 'var(--text-quaternary)'}` }}
                     >
                       <span className="month-appointment-time">{formatTime(a.startTime)}</span>
                       <span className="month-appointment-patient">{a.patientName?.split(' ')[0]}</span>
@@ -500,7 +500,7 @@ export function AgendaScreen({
       {/* ESTADÍSTICAS RÁPIDAS */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
-          { label: 'Hoy',        value: stats.today,       color: '#3b82f6' },
+          { label: 'Hoy',        value: stats.today,       color: 'var(--sky)' },
           { label: 'Cobros pendientes', value: stats.pendingPay, color: 'var(--accent-amber)',
             sub: stats.pendingPay > 0 ? formatCurrency(stats.pendingPayTotal, 'UYU') : null },
           { label: 'Total activas', value: stats.total,    color: 'var(--accent-green)' },

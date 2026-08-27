@@ -7,15 +7,15 @@ import { useScreenFocus } from '../../hooks/useScreenFocus'
 import { formatCurrency, getRevenueDate } from '../../utils/helpers'
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns'
 import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { generateSalesReport, generateCustomersReport, generateInventoryReport, generateInactiveCustomersReport } from '../../utils/pdfReportGenerator'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
-const MAX_DATE_RANGE_DAYS = 365
-const LOW_STOCK_THRESHOLD = 5
-const PAID_STATUSES       = new Set(['completed', 'delivered', 'picked'])
+const MAX_DATE_RANGE_DAYS      = 365
+const LOW_STOCK_THRESHOLD      = 5
+const INACTIVE_THRESHOLD_DAYS  = 60
+const PAID_STATUSES            = new Set(['completed', 'delivered', 'picked'])
 
 // Perfiles disponibles
 const USER_MODES = {
@@ -221,6 +221,40 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     }
   }, [products, categoryFilter])
 
+  // ── Clientes inactivos ─────────────────────────────────────────────────────
+  // A propósito, NO usa filteredAppointments (acotado al rango de fechas
+  // elegido): "última compra" necesita ver TODO el historial del perfil, no
+  // solo lo que cae en el período que se esté mirando en pantalla.
+  const inactiveStats = useMemo(() => {
+    const hoy = new Date()
+    const porCliente = new Map()
+
+    getAppointmentsByProfile(selectedProfile).forEach(a => {
+      if (!a.patientName) return
+      const key = a.patientId || a.patientName
+      const actual = porCliente.get(key) || {
+        name: a.patientName, phone: a.patientPhone || '', lastOrder: null, totalSpent: 0,
+      }
+      if (a.paid) actual.totalSpent += a.price || 0
+      const cuando = new Date(a.startTime)
+      if (!Number.isNaN(cuando.getTime()) && (!actual.lastOrder || cuando > actual.lastOrder)) {
+        actual.lastOrder = cuando
+      }
+      porCliente.set(key, actual)
+    })
+
+    const inactivos = [...porCliente.values()]
+      .filter(c => c.lastOrder)
+      .map(c => ({ ...c, diasInactivo: Math.floor((hoy - c.lastOrder) / 86_400_000) }))
+      .filter(c => c.diasInactivo >= INACTIVE_THRESHOLD_DAYS)
+      .sort((a, b) => b.diasInactivo - a.diasInactivo)
+
+    return {
+      inactivos,
+      valorEnRiesgo: inactivos.reduce((s, c) => s + c.totalSpent, 0),
+    }
+  }, [selectedProfile, getAppointmentsByProfile])
+
   // ── Comparativa período anterior ──────────────────────────────────────────
   const previousPeriodStats = useMemo(() => {
     const start = parseDateLocal(startDate)
@@ -266,89 +300,38 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
   }, [])
 
   // ── Exportar PDF ──────────────────────────────────────────────────────────
+  //
+  // Antes esta función armaba el PDF a mano, en paralelo al generador de
+  // src/utils/pdfReportGenerator.js — que ya tenía header con marca, tarjetas
+  // de KPI, footer con número de página, top productos con formato y (en
+  // Ventas) el desglose por medio de pago. Dos implementaciones del mismo PDF
+  // que no se parecían: el "Reportes" del menú principal se veía pelado
+  // mientras "Cobros pendientes" (la única pantalla que sí llamaba al
+  // generador bueno) tenía todo eso. Ahora las tres reusan el mismo generador.
   const exportToPDF = useCallback(async () => {
     if (!validateDateRange()) return
     setLoading(true)
     try {
-      const doc = new jsPDF()
-      const pw  = doc.internal.pageSize.getWidth()
-
-      doc.setFontSize(24); doc.setTextColor(99,102,241)
-      doc.text('ZenDay', pw/2, 20, { align:'center' })
-
-      doc.setFontSize(18); doc.setTextColor(0,0,0)
-      const perfilTexto = selectedProfile === 'entrepreneur' ? 'Emprendedor' : 'Profesional'
-      doc.text(`Reporte de ${reportType === 'sales' ? 'Ventas' : reportType === 'customers' ? 'Clientes' : 'Stock'} - ${perfilTexto}`, pw/2, 35, { align:'center' })
-
-      doc.setFontSize(10); doc.setTextColor(100,100,100)
-      doc.text(`Período: ${formatLocalDate(startDate)} al ${formatLocalDate(endDate)}`, pw/2, 45, { align:'center' })
-      doc.text(`Generado: ${new Date().toLocaleString()}`, pw/2, 52, { align:'center' })
-
-      let y = 65
+      const appointmentsDelPerfil = getAppointmentsByProfile(selectedProfile)
 
       if (reportType === 'sales') {
-        doc.setFontSize(14); doc.setTextColor(0,0,0)
-        doc.text('Resumen de Ventas', 14, y); y += 10
-
-        autoTable(doc, {
-          startY: y,
-          body: [
-            ['Total ventas (cobrado)',    formatCurrency(salesStats.totalSales, 'UYU')],
-            ['Pendiente de cobro',        formatCurrency(salesStats.totalPending, 'UYU')],
-            ['Total pedidos',             salesStats.totalOrders.toString()],
-            ['Pedidos pagados',           salesStats.paidCount.toString()],
-            ['Pedidos pendientes',        salesStats.pendingCount.toString()],
-            ['Variación vs anterior',     `${previousPeriodStats.change > 0 ? '+' : ''}${previousPeriodStats.change.toFixed(1)}%`],
-          ],
-          theme:'striped', styles:{ fontSize:10 },
-          columnStyles:{ 0:{ fontStyle:'bold' } },
+        generateSalesReport({
+          appointments: appointmentsDelPerfil, startDate, endDate,
+          comparisonChange: previousPeriodStats.change,
         })
-
-        y = doc.lastAutoTable.finalY + 15
-
-        if (salesStats.topProducts.length > 0) {
-          doc.text('Top productos más vendidos (solo cobrados)', 14, y); y += 5
-          autoTable(doc, {
-            startY: y,
-            head: [['Producto','Cantidad','Ingresos']],
-            body: salesStats.topProducts.map(p => [p.name, p.quantity.toString(), formatCurrency(p.revenue,'UYU')]),
-            theme:'striped', headStyles:{ fillColor:[99,102,241] },
-          })
-        }
-
       } else if (reportType === 'customers') {
-        autoTable(doc, {
-          startY: y,
-          head: [['Cliente','Pedidos','Gastado']],
-          body: customerStats.topCustomers.map(c => [c.name, c.orders.toString(), formatCurrency(c.spent,'UYU')]),
-          theme:'striped', headStyles:{ fillColor:[99,102,241] },
+        generateCustomersReport({ appointments: appointmentsDelPerfil, patients, startDate, endDate })
+      } else if (reportType === 'inactive') {
+        generateInactiveCustomersReport({
+          appointments: appointmentsDelPerfil, patients, thresholdDays: INACTIVE_THRESHOLD_DAYS,
         })
-
       } else {
-        autoTable(doc, {
-          startY: y,
-          body: [
-            ['Total productos',          stockStats.totalProducts.toString()],
-            ['Valor del inventario',     formatCurrency(stockStats.totalValue,'UYU')],
-            ['Productos con stock bajo', stockStats.lowStockCount.toString()],
-            ['Productos agotados',       stockStats.outOfStockCount.toString()],
-          ],
-          theme:'striped',
-        })
-
-        if (stockStats.lowStockProducts.length > 0) {
-          y = doc.lastAutoTable.finalY + 15
-          doc.text('Productos con stock bajo', 14, y); y += 5
-          autoTable(doc, {
-            startY: y,
-            head: [['Producto','Stock','Precio']],
-            body: stockStats.lowStockProducts.map(p => [p.name, p.stock.toString(), formatCurrency(p.price,'UYU')]),
-            theme:'striped', headStyles:{ fillColor:[245,158,11] },
-          })
-        }
+        const productosDelFiltro = categoryFilter === 'all'
+          ? products
+          : products.filter(p => p.category === categoryFilter)
+        generateInventoryReport({ products: productosDelFiltro })
       }
 
-      doc.save(`reporte_${reportType}_${selectedProfile}_${startDate}_al_${endDate}.pdf`)
       toast.addToast('📄 Reporte PDF generado', 'success')
     } catch (err) {
       console.error('[Reports] PDF error:', err)
@@ -356,7 +339,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     } finally {
       setLoading(false)
     }
-  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
+  }, [reportType, startDate, endDate, selectedProfile, categoryFilter, products, patients, previousPeriodStats, getAppointmentsByProfile, validateDateRange, toast])
 
   // ── Exportar Excel ────────────────────────────────────────────────────────
   const exportToExcel = useCallback(() => {
@@ -397,6 +380,18 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
         ['Cliente','Pedidos','Gastado'],
         ...customerStats.topCustomers.map(c => [c.name, c.orders, formatCurrency(c.spent,'UYU')]),
       ]
+    } else if (reportType === 'inactive') {
+      data = [
+        [`Clientes inactivos (${INACTIVE_THRESHOLD_DAYS}+ días) - ${perfilTexto}`],
+        [],
+        ['Resumen'],
+        ['Concepto','Valor'],
+        ['Clientes inactivos', inactiveStats.inactivos.length],
+        ['Valor histórico',    formatCurrency(inactiveStats.valorEnRiesgo,'UYU')],
+        [],
+        ['Cliente','Días inactivo','Gastado históricamente'],
+        ...inactiveStats.inactivos.map(c => [c.name, c.diasInactivo, formatCurrency(c.totalSpent,'UYU')]),
+      ]
     } else {
       data = [
         [`Reporte de Inventario - ${perfilTexto}`],
@@ -423,7 +418,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     XLSX.utils.book_append_sheet(wb, ws, `Reporte_${reportType}_${selectedProfile}`)
     XLSX.writeFile(wb, `reporte_${reportType}_${selectedProfile}_${startDate}_al_${endDate}.xlsx`)
     toast.addToast('📊 Reporte Excel generado', 'success')
-  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
+  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, inactiveStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
 
   const trendClass = previousPeriodStats.change > 0 ? 'positive' : previousPeriodStats.change < 0 ? 'negative' : 'neutral'
   const trendIcon  = previousPeriodStats.change > 0 ? '↑' : previousPeriodStats.change < 0 ? '↓' : '→'
@@ -488,6 +483,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
           { key:'sales',     label:'💰 Ventas' },
           { key:'customers', label:'👥 Clientes' },
           { key:'stock',     label:'📦 Inventario' },
+          { key:'inactive',  label:'😴 Inactivos' },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -718,6 +714,44 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
 
           {stockStats.lowStockProducts.length === 0 && stockStats.outOfStockProducts.length === 0 && (
             <div className="empty-message success">✅ ¡Todo en orden! No hay productos con problemas de stock.</div>
+          )}
+        </div>
+      )}
+
+      {reportType === 'inactive' && (
+        <div className="report-content">
+          <div className="kpi-grid">
+            <div className="kpi-card warning">
+              <div className="kpi-icon">😴</div>
+              <div className="kpi-info">
+                <span className="kpi-value">{inactiveStats.inactivos.length}</span>
+                <span className="kpi-label">Clientes inactivos ({INACTIVE_THRESHOLD_DAYS}+ días)</span>
+              </div>
+            </div>
+            <div className="kpi-card danger">
+              <div className="kpi-icon">💸</div>
+              <div className="kpi-info">
+                <span className="kpi-value">{formatCurrency(inactiveStats.valorEnRiesgo, 'UYU')}</span>
+                <span className="kpi-label">Valor histórico</span>
+              </div>
+            </div>
+          </div>
+
+          {inactiveStats.inactivos.length > 0 ? (
+            <div className="report-section warning">
+              <h3>😴 Sin comprar hace {INACTIVE_THRESHOLD_DAYS}+ días (los que más urgen, primero)</h3>
+              <div className="low-stock-list">
+                {inactiveStats.inactivos.map(c => (
+                  <div key={c.name} className="stock-item">
+                    <span className="stock-name">{c.name}</span>
+                    <span className="stock-quantity">{c.diasInactivo} días</span>
+                    <span className="stock-price">{formatCurrency(c.totalSpent, 'UYU')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="empty-message success">✅ Todos tus clientes compraron en los últimos {INACTIVE_THRESHOLD_DAYS} días.</div>
           )}
         </div>
       )}
