@@ -23,6 +23,51 @@ const USER_MODES = {
   ENTREPRENEUR: 'entrepreneur'
 }
 
+// ── Orden elegible por tipo de reporte ──────────────────────────────────────
+// Los value tienen que coincidir con las claves que reconoce cada
+// generateXReport() en pdfReportGenerator.js (ver la función `ordenar`).
+const SORT_OPTIONS = {
+  sales: [
+    { value: 'fecha',    label: 'Fecha' },
+    { value: 'cliente',  label: 'Cliente' },
+    { value: 'producto', label: 'Producto' },
+    { value: 'monto',    label: 'Monto' },
+    { value: 'estado',   label: 'Estado' },
+  ],
+  customers: [
+    { value: 'facturado', label: 'Facturado' },
+    { value: 'nombre',    label: 'Nombre' },
+    { value: 'pedidos',   label: 'Pedidos' },
+    { value: 'cobrado',   label: 'Cobrado' },
+    { value: 'ultimo',    label: 'Último pedido' },
+  ],
+  stock: [
+    { value: 'nombre', label: 'Nombre' },
+    { value: 'stock',  label: 'Stock' },
+    { value: 'precio', label: 'Precio' },
+    { value: 'valor',  label: 'Valor' },
+  ],
+  inactive: [
+    { value: 'dias',   label: 'Días inactivo' },
+    { value: 'nombre', label: 'Nombre' },
+    { value: 'gasto',  label: 'Gastado' },
+  ],
+}
+
+// Mismo criterio que la función `ordenar` de pdfReportGenerator.js — acá
+// aparte porque ReportsScreen no la importa (evita acoplar la pantalla al
+// módulo de PDF sólo por esto).
+function ordenarLocal(lista, extractores, sortBy, sortDir) {
+  const extraer = extractores[sortBy]
+  if (!extraer) return lista
+  const signo = sortDir === 'asc' ? 1 : -1
+  return [...lista].sort((a, b) => {
+    const va = extraer(a), vb = extraer(b)
+    if (typeof va === 'string') return signo * va.localeCompare(vb)
+    return signo * ((va ?? 0) - (vb ?? 0))
+  })
+}
+
 // ─── HELPERS DE FECHA ─────────────────────────────────────────────────────────
 
 // getRevenueDate vive en utils/helpers: las tres pantallas de plata tenian
@@ -64,6 +109,11 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
   })
   const [endDate,        setEndDate]       = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [reportType,     setReportType]    = useState('sales')
+  // El orden venía fijo en cada reporte (fecha, o "top" por monto) sin forma
+  // de cambiarlo. Cada tipo de reporte tiene sus propios campos ordenables
+  // (ver SORT_OPTIONS), así que el campo elegido se resetea al cambiar de tipo.
+  const [sortBy,         setSortBy]        = useState(SORT_OPTIONS.sales[0].value)
+  const [sortDir,        setSortDir]       = useState('desc')
   const [loading,        setLoading]       = useState(false)
   const [categoryFilter, setCategoryFilter]= useState('all')
   const [selectedProfile, setSelectedProfile] = useState(userMode === 'entrepreneur' ? 'entrepreneur' : 'professional')
@@ -178,10 +228,13 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
       .filter(a => PAID_STATUSES.has(a.status) && a.paid)
       .forEach(apt => {
         const name = apt.patientName || 'Sin nombre'
-        if (!byCustomer[name]) byCustomer[name] = { orders: 0, spent: 0, paid: 0 }
+        if (!byCustomer[name]) byCustomer[name] = { orders: 0, spent: 0, paid: 0, lastOrder: null }
         byCustomer[name].orders++
         byCustomer[name].spent += apt.price || 0
         byCustomer[name].paid += apt.price || 0
+        if (!byCustomer[name].lastOrder || new Date(apt.startTime) > new Date(byCustomer[name].lastOrder)) {
+          byCustomer[name].lastOrder = apt.startTime
+        }
       })
 
     const topCustomers = Object.entries(byCustomer)
@@ -255,6 +308,29 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     }
   }, [selectedProfile, getAppointmentsByProfile])
 
+  // ── Orden elegido, aplicado a lo que se ve en pantalla y sale por Excel ────
+  // (el PDF ordena por su cuenta, con el mismo sortBy/sortDir, adentro de
+  // generateCustomersReport/generateInactiveCustomersReport). "Ventas" e
+  // "Inventario" no tienen acá una lista equivalente a la del PDF completo
+  // (la pantalla muestra top-10 / alertas, no el detalle entero), así que el
+  // orden elegido para esos dos sólo afecta al PDF.
+  const topCustomersOrdenados = useMemo(() => (
+    reportType === 'customers'
+      ? ordenarLocal(customerStats.topCustomers, {
+          nombre: c => c.name, pedidos: c => c.orders, facturado: c => c.spent,
+          cobrado: c => c.paid, ultimo: c => c.lastOrder ? new Date(c.lastOrder).getTime() : 0,
+        }, sortBy, sortDir)
+      : customerStats.topCustomers
+  ), [customerStats.topCustomers, reportType, sortBy, sortDir])
+
+  const inactivosOrdenados = useMemo(() => (
+    reportType === 'inactive'
+      ? ordenarLocal(inactiveStats.inactivos, {
+          nombre: c => c.name, dias: c => c.diasInactivo, gasto: c => c.totalSpent,
+        }, sortBy, sortDir)
+      : inactiveStats.inactivos
+  ), [inactiveStats.inactivos, reportType, sortBy, sortDir])
+
   // ── Comparativa período anterior ──────────────────────────────────────────
   const previousPeriodStats = useMemo(() => {
     const start = parseDateLocal(startDate)
@@ -318,18 +394,19 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
         generateSalesReport({
           appointments: appointmentsDelPerfil, startDate, endDate,
           comparisonChange: previousPeriodStats.change,
+          sortBy, sortDir,
         })
       } else if (reportType === 'customers') {
-        generateCustomersReport({ appointments: appointmentsDelPerfil, patients, startDate, endDate })
+        generateCustomersReport({ appointments: appointmentsDelPerfil, patients, startDate, endDate, sortBy, sortDir })
       } else if (reportType === 'inactive') {
         generateInactiveCustomersReport({
-          appointments: appointmentsDelPerfil, patients, thresholdDays: INACTIVE_THRESHOLD_DAYS,
+          appointments: appointmentsDelPerfil, patients, thresholdDays: INACTIVE_THRESHOLD_DAYS, sortBy, sortDir,
         })
       } else {
         const productosDelFiltro = categoryFilter === 'all'
           ? products
           : products.filter(p => p.category === categoryFilter)
-        generateInventoryReport({ products: productosDelFiltro })
+        generateInventoryReport({ products: productosDelFiltro, sortBy, sortDir })
       }
 
       toast.addToast('📄 Reporte PDF generado', 'success')
@@ -339,7 +416,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     } finally {
       setLoading(false)
     }
-  }, [reportType, startDate, endDate, selectedProfile, categoryFilter, products, patients, previousPeriodStats, getAppointmentsByProfile, validateDateRange, toast])
+  }, [reportType, startDate, endDate, selectedProfile, categoryFilter, products, patients, previousPeriodStats, sortBy, sortDir, getAppointmentsByProfile, validateDateRange, toast])
 
   // ── Exportar Excel ────────────────────────────────────────────────────────
   const exportToExcel = useCallback(() => {
@@ -378,7 +455,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
         [],
         ['Top Clientes (por gasto cobrado)'],
         ['Cliente','Pedidos','Gastado'],
-        ...customerStats.topCustomers.map(c => [c.name, c.orders, formatCurrency(c.spent,'UYU')]),
+        ...topCustomersOrdenados.map(c => [c.name, c.orders, formatCurrency(c.spent,'UYU')]),
       ]
     } else if (reportType === 'inactive') {
       data = [
@@ -390,7 +467,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
         ['Valor histórico',    formatCurrency(inactiveStats.valorEnRiesgo,'UYU')],
         [],
         ['Cliente','Días inactivo','Gastado históricamente'],
-        ...inactiveStats.inactivos.map(c => [c.name, c.diasInactivo, formatCurrency(c.totalSpent,'UYU')]),
+        ...inactivosOrdenados.map(c => [c.name, c.diasInactivo, formatCurrency(c.totalSpent,'UYU')]),
       ]
     } else {
       data = [
@@ -418,7 +495,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
     XLSX.utils.book_append_sheet(wb, ws, `Reporte_${reportType}_${selectedProfile}`)
     XLSX.writeFile(wb, `reporte_${reportType}_${selectedProfile}_${startDate}_al_${endDate}.xlsx`)
     toast.addToast('📊 Reporte Excel generado', 'success')
-  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, inactiveStats, previousPeriodStats, selectedProfile, validateDateRange, toast])
+  }, [reportType, startDate, endDate, salesStats, customerStats, stockStats, inactiveStats, topCustomersOrdenados, inactivosOrdenados, previousPeriodStats, selectedProfile, validateDateRange, toast])
 
   const trendClass = previousPeriodStats.change > 0 ? 'positive' : previousPeriodStats.change < 0 ? 'negative' : 'neutral'
   const trendIcon  = previousPeriodStats.change > 0 ? '↑' : previousPeriodStats.change < 0 ? '↓' : '→'
@@ -488,11 +565,39 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
           <button
             key={key}
             className={`report-type-btn ${reportType === key ? 'active' : ''}`}
-            onClick={() => setReportType(key)}
+            onClick={() => { setReportType(key); setSortBy(SORT_OPTIONS[key][0].value); setSortDir(key === 'stock' ? 'asc' : 'desc') }}
           >
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Orden de la lista principal — mismo campo para el PDF, el Excel y
+          (donde aplica) la vista previa. */}
+      <div className="report-filters" style={{ marginBottom: '16px' }}>
+        <span style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontWeight: 500 }}>Ordenar por</span>
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+          style={{
+            padding: '6px 10px', borderRadius: '10px', border: '1px solid var(--border)',
+            background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px',
+          }}
+        >
+          {SORT_OPTIONS[reportType].map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+          title={sortDir === 'asc' ? 'Ascendente' : 'Descendente'}
+          style={{
+            padding: '6px 12px', borderRadius: '10px', border: '1px solid var(--border)',
+            background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', cursor: 'pointer',
+          }}
+        >
+          {sortDir === 'asc' ? '↑ Ascendente' : '↓ Descendente'}
+        </button>
       </div>
 
       {/* Filtros de fecha */}
@@ -623,9 +728,9 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
           <div className="report-section">
             <h3>🏆 Top clientes (por gasto cobrado)</h3>
             <div className="top-customers-list">
-              {customerStats.topCustomers.length === 0 ? (
+              {topCustomersOrdenados.length === 0 ? (
                 <div className="empty-message">No hay datos en este período</div>
-              ) : customerStats.topCustomers.map((c, i) => (
+              ) : topCustomersOrdenados.map((c, i) => (
                 <div key={i} className="top-customer-item">
                   <div className="top-customer-rank">#{i + 1}</div>
                   <div className="top-customer-info">
@@ -737,11 +842,11 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
             </div>
           </div>
 
-          {inactiveStats.inactivos.length > 0 ? (
+          {inactivosOrdenados.length > 0 ? (
             <div className="report-section warning">
-              <h3>😴 Sin comprar hace {INACTIVE_THRESHOLD_DAYS}+ días (los que más urgen, primero)</h3>
+              <h3>😴 Sin comprar hace {INACTIVE_THRESHOLD_DAYS}+ días</h3>
               <div className="low-stock-list">
-                {inactiveStats.inactivos.map(c => (
+                {inactivosOrdenados.map(c => (
                   <div key={c.name} className="stock-item">
                     <span className="stock-name">{c.name}</span>
                     <span className="stock-quantity">{c.diasInactivo} días</span>

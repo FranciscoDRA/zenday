@@ -165,11 +165,32 @@ function drawSectionTitle(doc, title, y) {
   return y + 8
 }
 
+// ─── ORDEN ELEGIDO POR EL USUARIO ─────────────────────────────────────────────
+//
+// Antes cada reporte traía el orden fijo en el código (fecha, o el "top" por
+// monto) y no había forma de cambiarlo sin editar el archivo. `sortBy` es el
+// nombre de un extractor de la tabla `extractores`; `sortDir` es 'asc' o
+// 'desc'. Si `sortBy` no viene o no está en la tabla, la lista se devuelve
+// tal cual llegó (el orden por defecto que cada función ya traía).
+export function ordenar(lista, extractores, sortBy, sortDir = 'desc') {
+  const extraer = extractores[sortBy]
+  if (!extraer) return lista
+  const signo = sortDir === 'asc' ? 1 : -1
+  return [...lista].sort((a, b) => {
+    const va = extraer(a)
+    const vb = extraer(b)
+    if (typeof va === 'string') return signo * va.localeCompare(vb)
+    return signo * ((va ?? 0) - (vb ?? 0))
+  })
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTE DE VENTAS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateSalesReport({ appointments, startDate, endDate, businessName, comparisonChange }) {
+export function generateSalesReport({
+  appointments, startDate, endDate, businessName, comparisonChange, sortBy, sortDir,
+}) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pw  = doc.internal.pageSize.getWidth()
 
@@ -248,8 +269,13 @@ export function generateSalesReport({ appointments, startDate, endDate, business
       // después no se puede consultar es trabajo que se le pide al usuario a
       // cambio de nada.
       head: [['Cliente', 'Producto/Servicio', 'Fecha', 'Monto', 'Medio', 'Estado']],
-      body: completed
-        .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+      body: ordenar(completed, {
+        fecha:    a => new Date(a.startTime).getTime(),
+        cliente:  a => a.patientName || '',
+        producto: a => a.productName || a.serviceName || '',
+        monto:    a => a.price || 0,
+        estado:   a => a.paid ? 1 : 0,
+      }, sortBy || 'fecha', sortDir || 'desc')
         .map(a => [
           a.patientName || '—',
           a.productName || a.serviceName || '—',
@@ -340,7 +366,9 @@ export function generateSalesReport({ appointments, startDate, endDate, business
 // REPORTE DE CLIENTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateCustomersReport({ appointments, patients, startDate, endDate, businessName }) {
+export function generateCustomersReport({
+  appointments, patients, startDate, endDate, businessName, sortBy, sortDir,
+}) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
   // parseLocalDate, no new Date(): ver el comentario en generateSalesReport.
@@ -365,11 +393,21 @@ export function generateCustomersReport({ appointments, patients, startDate, end
     }
   })
 
-  const clientList = Object.values(byClient).sort((a, b) => b.spent - a.spent)
-  const totalClients  = clientList.length
-  const totalRevenue  = clientList.reduce((s, c) => s + c.spent, 0)
+  // El KPI "Top cliente" es siempre el que más gastó, sin importar en qué
+  // orden se termine mostrando la tabla de abajo.
+  const porGasto      = Object.values(byClient).sort((a, b) => b.spent - a.spent)
+  const totalClients  = porGasto.length
+  const totalRevenue  = porGasto.reduce((s, c) => s + c.spent, 0)
   const avgPerClient  = totalClients > 0 ? totalRevenue / totalClients : 0
-  const topClient     = clientList[0]
+  const topClient     = porGasto[0]
+
+  const clientList = ordenar(porGasto, {
+    nombre:     c => c.name,
+    pedidos:    c => c.orders,
+    facturado:  c => c.spent,
+    cobrado:    c => c.paid,
+    ultimo:     c => c.lastOrder ? new Date(c.lastOrder).getTime() : 0,
+  }, sortBy || 'facturado', sortDir || 'desc')
 
   let y = drawHeader(doc, { title: 'Reporte de Clientes', startDate, endDate, businessName })
 
@@ -415,7 +453,7 @@ export function generateCustomersReport({ appointments, patients, startDate, end
 // REPORTE DE INVENTARIO
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateInventoryReport({ products, businessName }) {
+export function generateInventoryReport({ products, businessName, sortBy, sortDir }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const today = todayKey()   // en UTC daba manana despues de las 21:00
 
@@ -489,8 +527,12 @@ export function generateInventoryReport({ products, businessName }) {
   autoTable(doc, {
     startY: y,
     head: [['Artículo', 'Código', 'Stock', 'Precio unit.', 'Valor total', 'Estado']],
-    body: products
-      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    body: ordenar(products, {
+      nombre: p => p.name || '',
+      stock:  p => p.stock || 0,
+      precio: p => p.price || 0,
+      valor:  p => (p.price || 0) * (p.stock || 0),
+    }, sortBy || 'nombre', sortDir || 'asc')
       .map(p => {
         const stock  = p.stock || 0
         const status = stock === 0 ? 'AGOTADO' : stock < 5 ? 'STOCK BAJO' : 'OK'
@@ -878,7 +920,9 @@ export function generateReceiptPDF({ appointment, businessName }) {
 // CLIENTES INACTIVOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateInactiveCustomersReport({ appointments, patients, businessName, thresholdDays = 60 }) {
+export function generateInactiveCustomersReport({
+  appointments, patients, businessName, thresholdDays = 60, sortBy, sortDir,
+}) {
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const lista = Array.isArray(appointments) ? appointments : []
   const hoy   = new Date()
@@ -903,14 +947,19 @@ export function generateInactiveCustomersReport({ appointments, patients, busine
     porCliente.set(key, actual)
   })
 
-  const inactivos = [...porCliente.values()]
+  const inactivosSinOrdenar = [...porCliente.values()]
     .filter(c => c.lastOrder)
     .map(c => ({
       ...c,
       diasInactivo: Math.floor((hoy - c.lastOrder) / 86_400_000),
     }))
     .filter(c => c.diasInactivo >= thresholdDays)
-    .sort((a, b) => b.diasInactivo - a.diasInactivo)
+
+  const inactivos = ordenar(inactivosSinOrdenar, {
+    nombre: c => c.name,
+    dias:   c => c.diasInactivo,
+    gasto:  c => c.totalSpent,
+  }, sortBy || 'dias', sortDir || 'desc')
 
   const valorEnRiesgo = inactivos.reduce((s, c) => s + c.totalSpent, 0)
   const promedioDias  = inactivos.length > 0
