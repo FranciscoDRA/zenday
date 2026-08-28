@@ -159,6 +159,31 @@ describe('los reportes PDF no pierden el último día del rango', () => {
   })
 })
 
+describe('"a quién escribirle hoy" compara cumpleaños en hora local', () => {
+  // birthDate es 'YYYY-MM-DD' (viene de un <input type="date">). Comparar con
+  // new Date(p.birthDate).getMonth()/.getDate() directo cae en el mismo bug
+  // de siempre: en UTC-3 el 1ro de agosto se lee como el 31 de julio.
+  const fuente = leer('components', 'common', 'DailyFollowUpCard.jsx')
+
+  it('importa parseLocalDate', () => {
+    expect(fuente).toMatch(/import \{[^}]*parseLocalDate[^}]*\} from '\.\.\/\.\.\/utils\/helpers'/)
+  })
+
+  it('usa parseLocalDate para birthDate, no new Date directo', () => {
+    const inicio = fuente.indexOf('const cumples = patients.filter')
+    const bloque = fuente.slice(inicio, inicio + 300)
+    expect(bloque).toMatch(/parseLocalDate\(p\.birthDate\)/)
+  })
+
+  it('el botón de WhatsApp no aparece sin un teléfono válido', () => {
+    // formatPhoneForWhatsApp(phone) devuelve null si no hay número usable;
+    // BotonWhatsApp tiene que chequearlo antes de renderizar, no confiar en
+    // que el número siempre esté.
+    const bloque = fuente.slice(fuente.indexOf('function BotonWhatsApp'), fuente.indexOf('function Fila'))
+    expect(bloque).toMatch(/if \(!formatPhoneForWhatsApp\(phone\)\) return null/)
+  })
+})
+
 describe('el modal de fecha de pago recibe lo que le mandan', () => {
   const modal = leer('components', 'common', 'PaymentDateModal.jsx')
 

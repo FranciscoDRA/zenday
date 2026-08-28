@@ -1,9 +1,22 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import * as Sentry from '@sentry/electron/renderer'
 import './index.css'
 import App from './App.jsx'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { registrarError } from './utils/reporteDeErrores'
+
+// Ver el comentario largo en electron/main.cjs: mismo DSN (no es secreto),
+// mismos cuidados de privacidad. sendDefaultPii:false e integrations:[] a
+// propósito — sin esto @sentry/electron agrega captura de breadcrumbs de
+// navegación/DOM por defecto, que en una pantalla de historias clínicas
+// puede terminar mandando texto que no tiene que salir de la máquina.
+Sentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN || 'https://3d9074b064d477ba3b407155725f96d1@o4511989052080128.ingest.us.sentry.io/4511989066366976',
+  environment: import.meta.env.DEV ? 'development' : 'production',
+  sendDefaultPii: false,
+  integrations: [],
+})
 
 // Errores que NO pasan por React: promesas rechazadas sin catch, callbacks
 // sueltos, fallos dentro de setTimeout. El ErrorBoundary no los ve.

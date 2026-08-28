@@ -1,4 +1,5 @@
 import React from 'react'
+import * as Sentry from '@sentry/electron/renderer'
 
 /**
  * ErrorBoundary — red de contención para errores de render.
@@ -52,6 +53,16 @@ export class ErrorBoundary extends React.Component {
         componentStack: info?.componentStack,
       })
     } catch { /* el log nunca puede ser la causa de otra falla */ }
+
+    // Este SÍ sale de la máquina — es el punto de todo esto. Sin nombres de
+    // paciente ni datos del formulario: el objeto Error y el component stack
+    // de React, nada más.
+    try {
+      Sentry.captureException(error, {
+        tags: { scope: this.props.scope || 'desconocido' },
+        contexts: { react: { componentStack: info?.componentStack } },
+      })
+    } catch { /* Sentry no puede ser la causa de otra falla */ }
 
     if (typeof this.props.onError === 'function') {
       try { this.props.onError(error, info) } catch { /* no romper dentro del handler */ }

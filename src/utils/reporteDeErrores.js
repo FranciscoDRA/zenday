@@ -22,6 +22,8 @@
 //  y el reporte se copia al portapapeles. Lo manda el usuario si quiere, a mano.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import * as Sentry from '@sentry/electron/renderer'
+
 /** Cuantos errores se guardan en memoria para el reporte. */
 export const MAX_GUARDADOS = 20
 
@@ -87,6 +89,14 @@ export function registrarError({ scope, message, stack, ahora = Date.now() } = {
 
   errores.push(error)
   if (errores.length > MAX_GUARDADOS) errores.shift()
+
+  // Mismo filtro de ruido de arriba, así que Sentry recibe lo mismo que ve el
+  // usuario en <AvisoDeError/> — nada de "sin internet" cada 30 segundos.
+  try {
+    const err = new Error(mensaje)
+    if (stack) err.stack = stack
+    Sentry.captureException(err, { tags: { scope: error.scope } })
+  } catch { /* Sentry no puede ser la causa de otra falla */ }
 
   const ultimo = avisadoEn.get(mensaje)
   const avisar = ultimo === undefined || (ahora - ultimo) > SILENCIO_MS

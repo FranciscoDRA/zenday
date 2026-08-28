@@ -1,3 +1,27 @@
+// ═══════════════════════════════════════════════════════════════════════
+//  MONITOREO DE ERRORES (proceso principal)
+//
+//  Antes de esto, un error en el proceso principal (no en la ventana) sólo
+//  se veía si el cliente tenía la consola abierta — que nunca la tiene. Va
+//  primero en el archivo, antes de cualquier otro require, para agarrar
+//  también los fallos que puedan pasar cargando esos módulos.
+//
+//  El DSN de Sentry NO es un secreto (a diferencia de ZENDAY_LICENSE_SECRET):
+//  solo permite ENVIAR eventos a este proyecto, no leerlos ni administrarlo.
+//  Es seguro que viaje dentro del .exe, igual que la apiKey de Firebase.
+//
+//  sendDefaultPii:false y sin integraciones de captura de pantalla/sesión a
+//  propósito: esta app maneja historias clínicas. Sentry se usa acá para
+//  saber QUE se rompió y DONDE, no para grabar lo que el cliente hace.
+// ═══════════════════════════════════════════════════════════════════════
+const Sentry = require('@sentry/electron/main')
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || 'https://3d9074b064d477ba3b407155725f96d1@o4511989052080128.ingest.us.sentry.io/4511989066366976',
+  release: `zenday@${require('../package.json').version}`,
+  environment: process.env.NODE_ENV === 'development' ? 'development' : 'production',
+  sendDefaultPii: false,
+})
+
 const { app, BrowserWindow, ipcMain, Notification, shell, session } = require('electron')
 const path = require('path')
 const fs = require('fs')

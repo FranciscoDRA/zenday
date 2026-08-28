@@ -8,6 +8,7 @@ import {
 } from 'recharts'
 import { exportAppointmentsToExcel } from '../../utils/exportImport'
 import { generateFinancialReport } from '../../utils/pdfReportGenerator'
+import { DailyFollowUpCard } from '../common/DailyFollowUpCard'
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 
@@ -325,8 +326,8 @@ function EntrepreneurDashboard({
           </div>
         </div>
 
-        {/* NUEVA TARJETA: Total histórico cobrado */}
-        <div className="kpi-card" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.2)' }}>
+        {/* Total histórico cobrado */}
+        <div className="kpi-card" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 10%, transparent), color-mix(in srgb, var(--accent-purple) 10%, transparent))', border: '1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent)' }}>
           <span className="kpi-icon">💎</span>
           <div className="kpi-content">
             <span className="kpi-value">{formatCurrency(totalHistoricoIncome, 'UYU')}</span>
@@ -335,6 +336,8 @@ function EntrepreneurDashboard({
           </div>
         </div>
       </div>
+
+      <DailyFollowUpCard appointments={appointments} patients={patients} />
 
       {/* ── Objetivo + Pedidos activos + Stock ───────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
@@ -639,6 +642,8 @@ export function DashboardScreen({
           </div>
         ))}
       </div>
+
+      <DailyFollowUpCard appointments={appointments} patients={patients} />
 
       <div className="section-header-premium">
         <h3>📋 Consultas de hoy</h3>
