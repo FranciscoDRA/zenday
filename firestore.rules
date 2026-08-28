@@ -199,9 +199,14 @@ service cloud.firestore {
         allow create, update: if puede(businessId, collectionName)
           && mode in ['professional', 'entrepreneur']
           && collectionName in ['appointments', 'patients', 'products', 'expenses', 'audit']
-          // Techo de tamaño: evita que un bug de sincronización (o alguien con
-          // la sesión abierta) infle la facturación de Firestore con un documento
-          // gigante. Firestore permite hasta 1 MB; 200 KB sobra para un pedido.
+          // Techo de CANTIDAD DE CAMPOS, no de kilobytes: `.size()` sobre un
+          // mapa en Firestore Rules cuenta claves de primer nivel, no bytes
+          // serializados — el lenguaje de reglas no tiene forma de medir el
+          // tamaño total de un documento (sólo el de un string/bytes puntual).
+          // Esto frena un documento con cientos de campos espurios (bug de
+          // sincronización, clave repetida por error), no uno con pocos campos
+          // y un valor enorme adentro — para eso, el techo real es el límite
+          // duro de 1 MB por documento que impone el propio Firestore.
           && request.resource.data.size() < 200;
 
         allow delete: if puede(businessId, collectionName);

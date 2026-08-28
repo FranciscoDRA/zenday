@@ -51,10 +51,17 @@ const getDefaultDataPath = () => {
 const DEFAULT_DATA_PATH = getDefaultDataPath()
 let LICENSE_FILE = path.join(DEFAULT_DATA_PATH, 'license.dat')
 let TRIAL_FILE   = path.join(DEFAULT_DATA_PATH, 'trial.dat')
+// Nombre del valor de Registro para el ancla del trial (ver más abajo),
+// derivado de la carpeta de datos: así una instalación real (una sola carpeta
+// de datos, siempre la misma) usa siempre el mismo valor, mientras que cada
+// test con su propia carpeta temporal via setDataPath usa uno distinto — sin
+// esto, los tests pisaban el Registro real de la máquina entre sí.
+let TRIAL_REG_VALUE = `TrialAnchor-${crypto.createHash('sha256').update(DEFAULT_DATA_PATH).digest('hex').substring(0, 12)}`
 
 function setDataPath(userDataPath) {
   LICENSE_FILE = path.join(userDataPath, 'license.dat')
   TRIAL_FILE   = path.join(userDataPath, 'trial.dat')
+  TRIAL_REG_VALUE = `TrialAnchor-${crypto.createHash('sha256').update(userDataPath).digest('hex').substring(0, 12)}`
   ensureDir()
 }
 
@@ -291,6 +298,66 @@ function readTrial() {
   }
 }
 
+// ─── ANCLA DE TRIAL EN EL REGISTRO (Windows) ──────────────────────────────────
+// El HMAC de arriba evita EDITAR trial.dat, pero no evita BORRARLO: sin nada
+// más, `del trial.dat` y reabrir la app da otros 14 días, indefinidamente,
+// porque `getTrialInfo` trataba "no existe el archivo" como "cliente nuevo".
+// Acá se guarda una segunda copia firmada en el Registro de Windows (HKCU, sin
+// privilegios de admin), que no se borra al borrar la carpeta de datos de la
+// app. `getTrialInfo` usa la fecha de inicio MÁS VIEJA entre archivo y
+// registro que sea válida, así que borrar sólo uno de los dos no adelanta el
+// inicio del trial — haría falta borrar ambos a la vez. No es a prueba de un
+// usuario que sepa editar el Registro, pero el ataque de un clic (borrar la
+// carpeta de AppData) deja de funcionar. El arreglo de fondo sigue siendo
+// registrar el trial contra el hardware ID del lado del servidor (ver la nota
+// al principio del archivo) — esto es una mejora mientras tanto, no un reemplazo.
+const TRIAL_REG_KEY = 'HKCU\\Software\\ZenDay'
+// TRIAL_REG_VALUE (el nombre del valor, no la clave) se define más arriba,
+// junto a LICENSE_FILE/TRIAL_FILE, y cambia con setDataPath.
+
+function readTrialAnchor() {
+  if (process.platform !== 'win32') return null
+  try {
+    const out = execSync(
+      `reg query "${TRIAL_REG_KEY}" /v ${TRIAL_REG_VALUE}`,
+      { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }
+    ).toString()
+    const m = out.match(new RegExp(`${TRIAL_REG_VALUE}\\s+REG_SZ\\s+(\\S+)`))
+    if (!m) return null
+    const raw = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'))
+    if (!raw || !raw.body || !raw.sig) return null
+    const expected = crypto.createHmac('sha256', TRIAL_SIGNING_KEY).update(raw.body).digest('hex')
+    if (!safeEqual(raw.sig, expected)) return null
+    return JSON.parse(raw.body)
+  } catch {
+    return null
+  }
+}
+
+function writeTrialAnchor(payload) {
+  if (process.platform !== 'win32') return
+  try {
+    const body = JSON.stringify(payload)
+    const sig = crypto.createHmac('sha256', TRIAL_SIGNING_KEY).update(body).digest('hex')
+    const encoded = Buffer.from(JSON.stringify({ body, sig })).toString('base64')
+    execSync(
+      `reg add "${TRIAL_REG_KEY}" /v ${TRIAL_REG_VALUE} /t REG_SZ /d "${encoded}" /f`,
+      { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'], timeout: 3000 }
+    )
+  } catch { /* si falla (permisos, WINE, etc.), el archivo local sigue anclando */ }
+}
+
+/** Sólo para tests: borra el valor de Registro de esta carpeta de datos. */
+function deleteTrialAnchor() {
+  if (process.platform !== 'win32') return
+  try {
+    execSync(
+      `reg delete "${TRIAL_REG_KEY}" /v ${TRIAL_REG_VALUE} /f`,
+      { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'], timeout: 3000 }
+    )
+  } catch { /* no existía; no hay nada que limpiar */ }
+}
+
 function getTrialInfo() {
   try {
     ensureDir()
@@ -298,21 +365,37 @@ function getTrialInfo() {
 
     if (existing?.tampered) return { active: false, daysLeft: 0, tampered: true }
 
-    if (!existing) {
-      const data = { startedAt: new Date().toISOString(), hwId: getHardwareId() }
-      writeTrial(data)
-      return { active: true, daysLeft: TRIAL_DAYS }
+    const anchor = readTrialAnchor()
+
+    // La fecha real es la MÁS VIEJA entre archivo y registro: ver el
+    // comentario arriba de writeTrialAnchor sobre por qué.
+    let startedAt = existing?.startedAt || null
+    if (anchor?.startedAt && (!startedAt || new Date(anchor.startedAt) < new Date(startedAt))) {
+      startedAt = anchor.startedAt
     }
 
-    const startedAt = new Date(existing.startedAt)
-    if (Number.isNaN(startedAt.getTime())) return { active: false, daysLeft: 0 }
+    if (!startedAt) {
+      const data = { startedAt: new Date().toISOString(), hwId: getHardwareId() }
+      writeTrial(data)
+      writeTrialAnchor(data)
+      return { active: true, daysLeft: TRIAL_DAYS, startedAt: data.startedAt }
+    }
+
+    // Si a una de las dos copias le falta la fecha (reinstalación, o se borró
+    // sólo una), se repone con la fecha real ya encontrada — así la próxima
+    // vez que falte una, la otra sigue anclando el trial.
+    if (!existing?.startedAt) writeTrial({ startedAt, hwId: getHardwareId() })
+    if (!anchor?.startedAt) writeTrialAnchor({ startedAt, hwId: getHardwareId() })
+
+    const startedAtDate = new Date(startedAt)
+    if (Number.isNaN(startedAtDate.getTime())) return { active: false, daysLeft: 0 }
 
     // Si el reloj del sistema quedó antes del inicio del trial (típico truco de
     // "atrasar la fecha"), se toma como día 0 en lugar de dar días de más.
-    const diffDays = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 86400000))
+    const diffDays = Math.max(0, Math.floor((Date.now() - startedAtDate.getTime()) / 86400000))
     const daysLeft = Math.max(0, TRIAL_DAYS - diffDays)
 
-    return { active: daysLeft > 0, daysLeft, startedAt: existing.startedAt }
+    return { active: daysLeft > 0, daysLeft, startedAt }
   } catch (err) {
     console.error('[License] Error leyendo trial:', err.message)
     return { active: false, daysLeft: 0 }
@@ -379,4 +462,6 @@ module.exports = {
   getLegacyHardwareId,
   deleteLicense,
   setDataPath,
+  deleteTrialAnchor,
+  getTrialInfo,
 }

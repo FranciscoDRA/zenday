@@ -4,7 +4,7 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { todayKey, parseLocalDate } from './helpers'
+import { todayKey, parseLocalDate, getRevenueDate } from './helpers'
 import { desglosePorMedio, etiquetaMedio, cierreDelDia } from './mediosDePago'
 
 // ─── PALETA DE COLORES ────────────────────────────────────────────────────────
@@ -209,8 +209,12 @@ export function generateSalesReport({
   const start = parseLocalDate(startDate)
   const end   = parseLocalDate(endDate); end.setHours(23, 59, 59, 999)
 
+  // getRevenueDate, no a.startTime directo: la pantalla en ReportsScreen.jsx
+  // filtra por fecha de cobro (deliveredAt → paymentDate → startTime), y si
+  // el PDF filtraba por otro campo los totales no coincidían con lo que se ve
+  // en pantalla para el mismo rango de fechas.
   const filtered = appointments.filter(a => {
-    const d = new Date(a.startTime)
+    const d = new Date(getRevenueDate(a))
     return d >= start && d <= end
   })
 
@@ -386,8 +390,11 @@ export function generateCustomersReport({
   const start = parseLocalDate(startDate)
   const end   = parseLocalDate(endDate); end.setHours(23, 59, 59, 999)
 
+  // getRevenueDate, no a.startTime directo: ver el comentario en
+  // generateSalesReport sobre por qué el PDF tiene que filtrar igual que la
+  // pantalla.
   const filtered = appointments.filter(a => {
-    const d = new Date(a.startTime)
+    const d = new Date(getRevenueDate(a))
     return d >= start && d <= end
   })
 

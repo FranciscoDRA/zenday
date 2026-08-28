@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { BackButton } from '../common/BackButton'
 import { useToast } from '../../contexts/ToastContext'
 import { useReminders } from '../../contexts/ReminderContext'
@@ -91,8 +91,19 @@ export function NewAppointmentScreen({
     return config?.defaultPrice || 0
   }, [])
 
+  // El alta rápida (Ctrl+K) puede traer un precio tipeado a mano, distinto al
+  // de catálogo (ej: "corte 800" pisando un precio de lista de 600). Sin este
+  // skip, la primera corrida de este mismo efecto (dispara al montar, porque
+  // productId ya viene seteado desde `pre`) lo pisaba con el precio de
+  // catálogo antes de que el usuario llegara a verlo.
+  const skipFirstPriceCalc = useRef(pre?.price != null)
+
   // CORREGIDO Bug 1: useEffect de precio con variables locales claras
   useEffect(() => {
+    if (skipFirstPriceCalc.current) {
+      skipFirstPriceCalc.current = false
+      return
+    }
     const { productId, duration } = formData
     let newPrice = 0
     

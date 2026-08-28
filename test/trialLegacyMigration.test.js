@@ -25,12 +25,20 @@ afterAll(() => fs.rmSync(raiz, { recursive: true, force: true }))
 
 const fuente = fs.readFileSync(new URL('../electron/licenseManager.cjs', import.meta.url), 'utf8')
 
+// Cada módulo cargado usa su propia carpeta de datos vía setDataPath, lo que
+// también le da su propio valor de Registro para el ancla del trial (ver
+// TRIAL_REG_VALUE en licenseManager.cjs) — pero ese valor sí queda en el
+// Registro real de la máquina si no se limpia, porque `reg` no es un mock.
+const modulosCreados = []
+afterAll(() => { for (const m of modulosCreados) m.deleteTrialAnchor() })
+
 function cargarModulo() {
   const p = path.join(raiz, `lm-${Math.random().toString(36).slice(2)}.cjs`)
   fs.writeFileSync(p, fuente)
   const m = require_(p)
   const datos = fs.mkdtempSync(path.join(raiz, 'datos-'))
   m.setDataPath(datos)
+  modulosCreados.push(m)
   return { m, trialFile: path.join(datos, 'trial.dat') }
 }
 

@@ -354,16 +354,19 @@ export function AppointmentDetailScreen({
     
     try {
       // Actualizar la fecha de pago
-      if (markAsPaid) {
-        // Si tenemos markAsPaid, la usamos para actualizar
-        await markAsPaid(appointment.id, newDate, metodo)
-      } else {
-        // Actualizar directamente el appointment
-        await updateAppointment(appointment.id, { 
-          paymentDate: newDate || new Date().toISOString()
-        })
-      }
-      
+      // FIX: markAsPaid/updateAppointment son sincrónicas y devuelven false (no
+      // tiran excepción) si no encuentran la cita — sin este chequeo, el toast
+      // de acá abajo decía "actualizado" igual aunque nada haya cambiado. No
+      // hace falta un toast de error propio: ambas ya muestran el suyo antes
+      // de devolver false (mismo motivo que handlePaymentConfirm).
+      const actualizado = markAsPaid
+        ? await markAsPaid(appointment.id, newDate, metodo)
+        : await updateAppointment(appointment.id, {
+            paymentDate: newDate || new Date().toISOString()
+          })
+
+      if (actualizado === false) return
+
       console.info('[AUDIT] Payment date updated:', {
         appointmentId: appointment.id,
         oldDate: appointment.paymentDate,

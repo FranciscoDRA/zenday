@@ -73,7 +73,6 @@ export default function EmprendedorPanel({
   setProducts,
   patients,
   addAppointment,
-  setAppointments,
   nav,
 }) {
   const toast = useToast()
@@ -240,7 +239,6 @@ export default function EmprendedorPanel({
     const pacienteEncontrado = (patients || []).find(p => p.name === pedido.cliente)
     
     const nuevaAppointment = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       patientName: pedido.cliente,
       patientId: pacienteEncontrado?.id || null,
       productId: String(articulo.id),
@@ -251,18 +249,17 @@ export default function EmprendedorPanel({
       status: 'delivered',
       paid: false,
       fromEmprendedor: true,
-      createdAt: new Date().toISOString(),
     }
 
-    if (typeof setAppointments === 'function') {
-      setAppointments(prev => [...prev, nuevaAppointment])
-    } else if (addAppointment) {
-      // FIX: addAppointment devuelve false si el horario choca. Sin esto, el
-      // pedido de producción se marcaba como creado y nunca llegaba a la agenda.
-      if (addAppointment(nuevaAppointment) === false) {
-        toast.addToast('❌ Ya hay otro pedido en ese horario de entrega', 'error')
-        return
-      }
+    // Siempre por addAppointment: es el único camino que chequea choques de
+    // horario, guarda en Firestore y genera el id de forma consistente con el
+    // resto de la app. setAppointments (mutación directa) se saltea las tres
+    // cosas — antes ganaba siempre porque App.jsx pasa setAppointments como
+    // función en todos los casos, así que la rama con addAppointment nunca se
+    // ejecutaba y los choques de horario no se detectaban.
+    if (addAppointment(nuevaAppointment) === false) {
+      toast.addToast('❌ Ya hay otro pedido en ese horario de entrega', 'error')
+      return
     }
 
     savePedidos(prev => prev.filter(p => p.id !== pedido.id))
@@ -273,7 +270,7 @@ export default function EmprendedorPanel({
     
     toast.addToast(mensaje, 'success')
     setPedidoSeleccionadoId(null)
-  }, [products, setProducts, patients, addAppointment, setAppointments, savePedidos, confirm, toast])
+  }, [products, setProducts, patients, addAppointment, savePedidos, confirm, toast])
 
   // ── ELIMINAR PEDIDO CON VALIDACIÓN (BAJA LÓGICA) ──────────────────────────
   const eliminarPedido = useCallback(async (id) => {

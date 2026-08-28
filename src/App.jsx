@@ -632,13 +632,15 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
       }
     }
 
-    // Un snapshot vacío que llega del servidor cuando acá hay registros es casi
-    // siempre un síntoma (permisos, businessId a medio resolver), no un borrado
-    // real. Antes ese [] pisaba el estado Y la copia de localStorage, y no
-    // quedaba ninguna copia de los datos en el equipo.
-    const guard = (col, apply) => (data, meta) => {
+    // Un snapshot vacío que llega de Firestore cuando acá hay registros es casi
+    // siempre un síntoma (permisos, businessId a medio resolver, caché local
+    // sin poblar todavía), no un borrado real — pase por caché o por servidor:
+    // un snapshot fromCache vacío es justamente el caso MÁS propenso a ser una
+    // lectura incompleta, no menos. Antes ese [] pisaba el estado Y la copia de
+    // localStorage, y no quedaba ninguna copia de los datos en el equipo.
+    const guard = (col, apply) => (data) => {
       const previous = readArray(getStorageKey(col, userMode))
-      if (data.length === 0 && previous.length > 0 && !meta?.fromCache) {
+      if (data.length === 0 && previous.length > 0) {
         console.warn(`[Sync] Snapshot vacío de ${col} con ${previous.length} registros locales: se ignora`)
         toast.addToast('El servidor devolvió una lista vacía. Se mantienen los datos de este equipo.', 'warning')
         return

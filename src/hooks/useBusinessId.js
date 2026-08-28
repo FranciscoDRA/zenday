@@ -113,11 +113,14 @@ export function useBusinessId(user) {
               await updateDoc(businessRef, { members: arrayUnion(user.uid) })
             }
           } else {
+            // merge:true + arrayUnion: si dos miembros reparan el mismo negocio
+            // faltante al mismo tiempo, ninguno pisa al otro (ver comentario de
+            // arrayUnion más abajo) — un setDoc sin merge sí lo haría.
             await setDoc(businessRef, {
               createdBy: user.uid,
               createdAt: new Date().toISOString(),
-              members: [user.uid],
-            })
+              members: arrayUnion(user.uid),
+            }, { merge: true })
           }
         } catch (err) {
           console.warn('[BusinessId] No se pudo verificar la membresía:', err.code || err.message)

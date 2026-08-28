@@ -29,6 +29,7 @@ const os = require('os')
 const https = require('https')
 const http = require('http')
 const net = require('net')
+const dns = require('dns')
 const { getTasks, saveTasks } = require('./store.cjs')
 const documentStore = require('./documentStore.cjs')
 const licenseClient = require('./licenseClient.cjs')
@@ -416,16 +417,47 @@ function registerIpcHandlers() {
         return reject(new Error(`Método no permitido: ${method}`))
       }
 
-      const lib = parsedUrl.protocol === 'https:' ? https : http
-      const reqOptions = {
-        hostname: parsedUrl.hostname,
-        port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-        path:     parsedUrl.pathname + parsedUrl.search,
-        method,
-        headers:  options.headers && typeof options.headers === 'object' ? options.headers : {},
-        // rejectUnauthorized queda en su valor por defecto (true): se valida el certificado.
+      // isPrivateAddress arriba sólo mira el hostname tal cual llegó — un
+      // dominio que resuelve a una IP privada (169.254.169.254, 127.0.0.1)
+      // lo pasaba igual, porque Node vuelve a resolver el DNS por su cuenta
+      // al conectar (DNS rebinding). Acá se resuelve UNA vez, se valida CADA
+      // IP resuelta, y se conecta directo a esa IP (pinning) — así lo que se
+      // valida es lo mismo a lo que efectivamente se conecta. `servername` se
+      // deja en el hostname real para que el SNI/certificado TLS sigan siendo
+      // los del dominio, no los de la IP.
+      const connectTo = (address) => {
+        const lib = parsedUrl.protocol === 'https:' ? https : http
+        const reqOptions = {
+          hostname: address,
+          servername: parsedUrl.protocol === 'https:' ? parsedUrl.hostname : undefined,
+          port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+          path:     parsedUrl.pathname + parsedUrl.search,
+          method,
+          headers: {
+            ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
+            Host: parsedUrl.host,
+          },
+          // rejectUnauthorized queda en su valor por defecto (true): se valida el certificado.
+        }
+        runRequest(lib, reqOptions)
       }
 
+      if (isDev) {
+        connectTo(parsedUrl.hostname)
+        return
+      }
+
+      dns.lookup(parsedUrl.hostname, { all: true }, (err, addresses) => {
+        if (err || !addresses || addresses.length === 0) {
+          return reject(new Error('No se pudo resolver el destino'))
+        }
+        if (addresses.some(a => isPrivateAddress(a.address))) {
+          return reject(new Error('Destino no permitido'))
+        }
+        connectTo(addresses[0].address)
+      })
+
+      function runRequest(lib, reqOptions) {
       const req = lib.request(reqOptions, (res) => {
         // Redirecciones manuales, revalidando el destino en cada salto.
         if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -464,6 +496,7 @@ function registerIpcHandlers() {
 
       if (options.body) req.write(options.body)
       req.end()
+      }
     })
 
     try {

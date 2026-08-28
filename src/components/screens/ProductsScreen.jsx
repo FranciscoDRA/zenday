@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { useScreenFocus } from '../../hooks/useScreenFocus'
 import { formatCurrency, todayKey } from '../../utils/helpers'
+import { ACTIVE_STATUSES } from '../../utils/constants'
 import {
   importProductsFromExcel,
   downloadProductTemplate,
@@ -153,10 +154,9 @@ export function ProductsScreen({ nav, products, setProducts, appointments = [], 
     // así que un artículo que alguna vez vendiste quedaba bloqueado para siempre.
     // El mensaje decía "completá los pedidos primero" y completarlos no cambiaba
     // nada. La rama de emprendedor (más abajo) ya filtraba por estado.
-    const ESTADOS_ACTIVOS = new Set(['scheduled', 'confirmed', 'pending'])
     const pedidosEnAppointments = (appointments || []).filter(a => {
       if (!a.productId) return false
-      return String(a.productId) === productIdStr && ESTADOS_ACTIVOS.has(a.status)
+      return String(a.productId) === productIdStr && ACTIVE_STATUSES.has(a.status)
     })
     
     // 2. Verificar en pedidos del Panel de Producción
