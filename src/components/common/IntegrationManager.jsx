@@ -439,7 +439,7 @@ export function IntegrationManager({ products = [], onIntegrationsChange }) {
 
   // Verificar Electron API al montar (silencioso en dev)
   useEffect(() => {
-    const isDev = process.env.NODE_ENV === 'development'
+    const isDev = import.meta.env.DEV
     try {
       checkElectronAPI()
     } catch (err) {

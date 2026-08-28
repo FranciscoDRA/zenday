@@ -41,6 +41,14 @@ function formatDateLong(isoString) {
   })
 }
 
+/** Fecha + hora, para el comprobante individual (formatDate sólo trae la fecha). */
+function formatDateTime(isoString) {
+  if (!isoString) return '—'
+  return new Date(isoString).toLocaleString('es-ES', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 // ─── HEADER DEL REPORTE ───────────────────────────────────────────────────────
 
 function drawHeader(doc, { title, subtitle, startDate, endDate, businessName = 'ZenDay' }) {
