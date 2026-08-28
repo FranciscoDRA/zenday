@@ -23,7 +23,10 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // ignoreRestSiblings: el patrón `const { data, ...meta } = x` para
+      // excluir un campo del objeto que se devuelve deja `data` sin usar a
+      // propósito — no es una variable olvidada.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', ignoreRestSiblings: true }],
     },
   },
   {

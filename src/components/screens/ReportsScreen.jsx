@@ -296,17 +296,41 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
       porCliente.set(key, actual)
     })
 
+    const conPedidos = new Set(
+      getAppointmentsByProfile(selectedProfile).map(a => a.patientId || a.patientName).filter(Boolean)
+    )
+
+    // Clientes registrados que nunca compraron — el caso más urgente de
+    // todos, invisible antes porque esto se armaba entero desde appointments.
+    // `patients` viene de userMode (ver App.jsx), así que sólo es fiable
+    // cuando selectedProfile coincide: en 'master' viendo el otro perfil no
+    // hay forma de saber a qué modo pertenece cada cliente, y mostrar la
+    // lista equivocada sería peor que no mostrar nada.
+    const sinPedidos = selectedProfile === userMode
+      ? (patients || [])
+          .filter(p => p.id && !conPedidos.has(p.id) && !conPedidos.has(p.name))
+          .map(p => {
+            const desde = p.createdAt ? new Date(p.createdAt) : null
+            const diasInactivo = desde && !Number.isNaN(desde.getTime())
+              ? Math.floor((hoy - desde) / 86_400_000)
+              : null
+            return { name: p.name, phone: p.phone || '', totalSpent: 0, diasInactivo }
+          })
+          .filter(c => c.diasInactivo === null || c.diasInactivo >= INACTIVE_THRESHOLD_DAYS)
+      : []
+
     const inactivos = [...porCliente.values()]
       .filter(c => c.lastOrder)
       .map(c => ({ ...c, diasInactivo: Math.floor((hoy - c.lastOrder) / 86_400_000) }))
       .filter(c => c.diasInactivo >= INACTIVE_THRESHOLD_DAYS)
-      .sort((a, b) => b.diasInactivo - a.diasInactivo)
+      .concat(sinPedidos)
+      .sort((a, b) => (b.diasInactivo ?? 0) - (a.diasInactivo ?? 0))
 
     return {
       inactivos,
       valorEnRiesgo: inactivos.reduce((s, c) => s + c.totalSpent, 0),
     }
-  }, [selectedProfile, getAppointmentsByProfile])
+  }, [selectedProfile, userMode, patients, getAppointmentsByProfile])
 
   // ── Orden elegido, aplicado a lo que se ve en pantalla y sale por Excel ────
   // (el PDF ordena por su cuenta, con el mismo sortBy/sortDir, adentro de
@@ -467,7 +491,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
         ['Valor histórico',    formatCurrency(inactiveStats.valorEnRiesgo,'UYU')],
         [],
         ['Cliente','Días inactivo','Gastado históricamente'],
-        ...inactivosOrdenados.map(c => [c.name, c.diasInactivo, formatCurrency(c.totalSpent,'UYU')]),
+        ...inactivosOrdenados.map(c => [c.name, c.diasInactivo === null ? 'Nunca compró' : c.diasInactivo, formatCurrency(c.totalSpent,'UYU')]),
       ]
     } else {
       data = [
@@ -849,7 +873,7 @@ export function ReportsScreen({ nav, appointments, products, patients, userMode 
                 {inactivosOrdenados.map(c => (
                   <div key={c.name} className="stock-item">
                     <span className="stock-name">{c.name}</span>
-                    <span className="stock-quantity">{c.diasInactivo} días</span>
+                    <span className="stock-quantity">{c.diasInactivo === null ? 'Nunca compró' : `${c.diasInactivo} días`}</span>
                     <span className="stock-price">{formatCurrency(c.totalSpent, 'UYU')}</span>
                   </div>
                 ))}

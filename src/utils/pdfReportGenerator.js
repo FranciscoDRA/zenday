@@ -374,8 +374,11 @@ export function generateSalesReport({
 // REPORTE DE CLIENTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// No recibe `patients`: es un ranking por gasto, y alguien que nunca compró
+// no tiene nada que ordenar ahí (a diferencia de "Clientes inactivos", que
+// sí quiere mostrar a esos clientes — ver generateInactiveCustomersReport).
 export function generateCustomersReport({
-  appointments, patients, startDate, endDate, businessName, sortBy, sortDir,
+  appointments, startDate, endDate, businessName, sortBy, sortDir,
 }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
@@ -955,6 +958,27 @@ export function generateInactiveCustomersReport({
     porCliente.set(key, actual)
   })
 
+  const conPedidos = new Set(lista.map(a => a.patientId || a.patientName).filter(Boolean))
+
+  // Clientes registrados que jamás compraron: antes eran invisibles acá —
+  // el reporte se armaba entero desde `appointments`, así que alguien sin un
+  // solo pedido no dejaba rastro en ningún lado. Es el caso más urgente de
+  // todos ("nunca compró" pesa más que "dejó de comprar"), y son justo los
+  // que un reporte de reactivación tiene que mostrar primero.
+  const sinPedidos = (Array.isArray(patients) ? patients : [])
+    .filter(p => p.id && !conPedidos.has(p.id) && !conPedidos.has(p.name))
+    .map(p => {
+      const desde = p.createdAt ? new Date(p.createdAt) : null
+      const diasInactivo = desde && !Number.isNaN(desde.getTime())
+        ? Math.floor((hoy - desde) / 86_400_000)
+        : null
+      return { name: p.name, phone: p.phone || '', totalSpent: 0, orders: 0, diasInactivo, nuncaCompro: true }
+    })
+    // Si no hay createdAt no se sabe hace cuánto está registrado sin comprar:
+    // se muestra igual (nunca compró es dato válido de por sí) pero no se
+    // filtra por umbral, porque no hay con qué compararlo.
+    .filter(c => c.diasInactivo === null || c.diasInactivo >= thresholdDays)
+
   const inactivosSinOrdenar = [...porCliente.values()]
     .filter(c => c.lastOrder)
     .map(c => ({
@@ -962,6 +986,7 @@ export function generateInactiveCustomersReport({
       diasInactivo: Math.floor((hoy - c.lastOrder) / 86_400_000),
     }))
     .filter(c => c.diasInactivo >= thresholdDays)
+    .concat(sinPedidos)
 
   const inactivos = ordenar(inactivosSinOrdenar, {
     nombre: c => c.name,
@@ -970,8 +995,11 @@ export function generateInactiveCustomersReport({
   }, sortBy || 'dias', sortDir || 'desc')
 
   const valorEnRiesgo = inactivos.reduce((s, c) => s + c.totalSpent, 0)
-  const promedioDias  = inactivos.length > 0
-    ? Math.round(inactivos.reduce((s, c) => s + c.diasInactivo, 0) / inactivos.length)
+  // Sólo promedia los que tienen un número real: un "nunca compró" sin
+  // createdAt (diasInactivo null) no tiene una cantidad de días que sumar.
+  const conDias = inactivos.filter(c => c.diasInactivo !== null)
+  const promedioDias = conDias.length > 0
+    ? Math.round(conDias.reduce((s, c) => s + c.diasInactivo, 0) / conDias.length)
     : 0
 
   let y = drawHeader(doc, {
@@ -1002,8 +1030,8 @@ export function generateInactiveCustomersReport({
     body: inactivos.map(c => [
       c.name,
       c.phone || '—',
-      formatDate(c.lastOrder.toISOString()),
-      c.diasInactivo.toString(),
+      c.lastOrder ? formatDate(c.lastOrder.toISOString()) : 'Nunca compró',
+      c.diasInactivo === null ? '—' : c.diasInactivo.toString(),
       formatUYU(c.totalSpent),
     ]),
     theme: 'striped',
