@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ZenDay</string>
+    <string name="title_activity_main">ZenDay</string>
+    <string name="package_name">com.zenday.app</string>
+    <string name="custom_url_scheme">com.zenday.app</string>
+</resources>

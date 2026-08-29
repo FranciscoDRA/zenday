@@ -20,7 +20,10 @@
     "deploy:rules": "npx --yes firebase-tools deploy --only firestore:rules,database",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rtdb": "npx --yes firebase-tools emulators:exec --only database \"node test/rtdb-rules.test.mjs\""
+    "test:rtdb": "npx --yes firebase-tools emulators:exec --only database \"node test/rtdb-rules.test.mjs\"",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:build": "npm run android:sync && cd android && gradlew.bat assembleDebug"
   },
   "build": {
     "appId": "com.zenday.app",
@@ -72,6 +75,10 @@
     }
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@sentry/electron": "^7.17.0",
     "date-fns": "^4.1.0",
     "electron-updater": "^6.8.3",

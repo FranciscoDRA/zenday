@@ -15,7 +15,10 @@ export default defineConfig([
     ],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      // __APP_VERSION__: inyectada por `define` en vite.config.js (reemplazo
+      // de texto en build, no una variable real) — mobileShim.js la usa como
+      // último recurso si Capacitor's App.getInfo() no está disponible.
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },

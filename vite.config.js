@@ -1,5 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+
+// Sólo la usa mobileShim.js, para mostrar una versión en "Reportar problema"
+// cuando no hay Electron (que sí la sabe por su propio package.json) — evita
+// mantener el número de versión escrito a mano en dos lugares.
+const APP_VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url))).version
 
 // Orígenes que la app necesita realmente alcanzar.
 const FIREBASE = [
@@ -59,6 +65,9 @@ function productionCsp() {
 
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   plugins: [react(), productionCsp()],
   server: {
     port: 5173,

@@ -423,6 +423,73 @@ body.dark .sidebar-key {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   NAV INFERIOR — celular (Capacitor). Reemplaza al windows-sidebar: misma
+   lista de tabs, franja horizontal abajo en vez de columna a la izquierda.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+body.es-capacitor .app-container { flex-direction: column; }
+
+.mobile-bottom-nav {
+  display: flex;
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  /* env(safe-area-inset-bottom): la franja de gestos de Android no debe
+     tapar el último ítem — sin esto, en un teléfono con gestos el nav queda
+     parcialmente debajo de la barra del sistema. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  order: 2;
+}
+
+.mobile-nav-item {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 68px;
+  padding: 8px 6px 6px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  position: relative;
+}
+.mobile-nav-item.active { color: var(--accent-blue); }
+.mobile-nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 14px; right: 14px;
+  height: 2px;
+  background: var(--accent-blue);
+  border-radius: 0 0 2px 2px;
+}
+.mobile-nav-item--logout { color: var(--accent-red); opacity: .75; }
+
+.mobile-nav-icon {
+  font-size: 20px;
+  line-height: 1;
+  position: relative;
+}
+.mobile-nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 68px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* El padding para los botones de ventana de Electron no tiene sentido en
+   Android: -webkit-app-region también existe en el WebView de Chromium, así
+   que el @supports de arriba matchea igual y sin esto se pierden 80px de
+   franja superior en un teléfono. */
+body.es-capacitor .window-controls { padding-left: 16px; -webkit-app-region: none; }
+body.es-capacitor .win-control { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    GLOBAL SEARCH
    ═══════════════════════════════════════════════════════════════════════════════ */
 

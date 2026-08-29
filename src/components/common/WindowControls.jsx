@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react'
+import { esMobil } from '../../utils/platform'
 
 export function WindowControls({ actions }) {
   const [isMaximized, setIsMaximized] = useState(false)
+  // El celular no tiene ventana que minimizar/maximizar/cerrar — esos tres
+  // botones no significan nada ahí — pero SÍ necesita la barra de acciones
+  // (avisos de error, notificaciones, recordatorios, backups), así que la
+  // franja de arriba se sigue mostrando, sólo sin los controles de ventana.
+  const mostrarControlesDeVentana = !esMobil()
 
   useEffect(() => {
     const api = window.electronAPI
@@ -61,6 +67,7 @@ export function WindowControls({ actions }) {
         </div>
       )}
 
+      {mostrarControlesDeVentana && (
       <div className="window-controls__group" style={{ WebkitAppRegion: 'no-drag' }}>
 
         <button
@@ -104,6 +111,7 @@ export function WindowControls({ actions }) {
         </button>
 
       </div>
+      )}
     </div>
   )
 }

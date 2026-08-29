@@ -13,6 +13,7 @@ import {
 } from '../../utils/exportImport'
 import { leaveBusiness, joinBusiness, removeMember, setMemberRole } from '../../hooks/useBusinessId'
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, rolDe } from '../../utils/businessRoles'
+import { esMobil } from '../../utils/platform'
 
 // ─── CONSTANTES (fuera del componente) ───────────────────────────────────────
 
@@ -880,6 +881,25 @@ export function SettingsScreen({
                 <p>Gestioná tu licencia de ZenDay</p>
               </div>
 
+              {esMobil() ? (
+                // La licencia se activa desde la PC, con clave y dispositivo.
+                // El celular no tiene esa licencia propia a propósito: si sos
+                // miembro de un negocio con licencia activa, ya tenés acceso
+                // acá — mostrar esta sección tal cual dejaría "Activar
+                // licencia" siempre oculto y el estado siempre en blanco, sin
+                // explicar por qué.
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label>📱 No hace falta activar nada acá</label>
+                    <span className="setting-hint">
+                      La licencia se gestiona desde la PC. Si sos parte de un
+                      negocio con licencia activa, ya tenés acceso completo
+                      desde el celular con tu cuenta.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="setting-row">
                 <div className="setting-info">
                   <label>Estado</label>
@@ -967,6 +987,8 @@ export function SettingsScreen({
                 </div>
                 <button className="btn-secondary" onClick={handleCopyDeviceId}>📋 Copiar ID</button>
               </div>
+              </>
+              )}
             </div>
           )}
 

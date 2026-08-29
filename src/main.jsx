@@ -5,6 +5,13 @@ import './index.css'
 import App from './App.jsx'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { registrarError } from './utils/reporteDeErrores'
+import { instalarMobileShimSiHaceFalta } from './utils/mobileShim'
+
+// Antes de todo lo demás: si esto corre en Capacitor (o en el preview suelto
+// de desarrollo) y no dentro de Electron, faltan los ~2 métodos de
+// window.electronAPI que SÍ hacen falta de verdad (ver mobileShim.js sobre
+// por qué son sólo dos).
+instalarMobileShimSiHaceFalta()
 
 // Ver el comentario largo en electron/main.cjs: mismo DSN (no es secreto),
 // mismos cuidados de privacidad. sendDefaultPii:false e integrations:[] a

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { USER_MODES } from '../../utils/constants'
 import { puedeVerPantalla } from '../../utils/businessRoles'
+import { esMobil } from '../../utils/platform'
 
 export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onLogout, alertas = 0, myRole }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -76,6 +77,34 @@ export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onL
     window.addEventListener('keydown', alPresionar)
     return () => window.removeEventListener('keydown', alPresionar)
   }, [onSwitchTab])
+
+  // En el celular no hay lugar para una columna vertical de 9 ítems: se
+  // reusa la MISMA lista de tabs (mismo filtro por rol) pero como una franja
+  // horizontal abajo, que se desliza si no entran todos — nada de esconder
+  // pantallas que en desktop sí se ven.
+  if (esMobil()) {
+    return (
+      <nav className="mobile-bottom-nav" aria-label="Navegación principal">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`mobile-nav-item ${activeTab === tab.id && !canGoBack ? 'active' : ''}`}
+            onClick={() => onSwitchTab(tab.id)}
+          >
+            <span className="mobile-nav-icon">
+              {tab.icon}
+              {tab.badge > 0 && <span className="sidebar-badge es-punto" aria-hidden="true" />}
+            </span>
+            <span className="mobile-nav-label">{tab.label}</span>
+          </button>
+        ))}
+        <button className="mobile-nav-item mobile-nav-item--logout" onClick={onLogout} title="Cerrar sesión">
+          <span className="mobile-nav-icon">🚪</span>
+          <span className="mobile-nav-label">Salir</span>
+        </button>
+      </nav>
+    )
+  }
 
   return (
     <aside className={`windows-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
