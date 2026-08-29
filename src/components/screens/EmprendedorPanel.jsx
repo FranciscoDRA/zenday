@@ -70,7 +70,6 @@ function formatearNumeroInput(valor) {
 
 export default function EmprendedorPanel({
   products,
-  setProducts,
   patients,
   addAppointment,
   nav,
@@ -228,16 +227,8 @@ export default function EmprendedorPanel({
     )
     if (!ok) return
 
-    setProducts(prevProducts =>
-      prevProducts.map(p =>
-        String(p.id) === String(articulo.id)
-          ? { ...p, stock: (p.stock || 0) - 1 }
-          : p
-      )
-    )
-
     const pacienteEncontrado = (patients || []).find(p => p.name === pedido.cliente)
-    
+
     const nuevaAppointment = {
       patientName: pedido.cliente,
       patientId: pacienteEncontrado?.id || null,
@@ -257,6 +248,13 @@ export default function EmprendedorPanel({
     // cosas — antes ganaba siempre porque App.jsx pasa setAppointments como
     // función en todos los casos, así que la rama con addAppointment nunca se
     // ejecutaba y los choques de horario no se detectaban.
+    //
+    // El descuento de stock también pasa por addAppointment ahora (ver
+    // adjustStockForStatus en App.jsx): antes se restaba stock ACÁ, antes de
+    // saber si addAppointment iba a aceptar el pedido, así que un choque de
+    // horario dejaba el stock ya descontado sin que se hubiera creado ninguna
+    // cita — un descuento fantasma. Restarlo dentro de addAppointment lo ata a
+    // que la cita se haya creado de verdad.
     if (addAppointment(nuevaAppointment) === false) {
       toast.addToast('❌ Ya hay otro pedido en ese horario de entrega', 'error')
       return
@@ -270,7 +268,7 @@ export default function EmprendedorPanel({
     
     toast.addToast(mensaje, 'success')
     setPedidoSeleccionadoId(null)
-  }, [products, setProducts, patients, addAppointment, savePedidos, confirm, toast])
+  }, [products, patients, addAppointment, savePedidos, confirm, toast])
 
   // ── ELIMINAR PEDIDO CON VALIDACIÓN (BAJA LÓGICA) ──────────────────────────
   const eliminarPedido = useCallback(async (id) => {

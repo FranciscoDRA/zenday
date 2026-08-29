@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { USER_MODES } from '../../utils/constants'
+import { puedeVerPantalla } from '../../utils/businessRoles'
 
-export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onLogout, alertas = 0 }) {
+export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onLogout, alertas = 0, myRole }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
 
@@ -38,7 +39,10 @@ export function Sidebar({ activeTab, onSwitchTab, canGoBack, userMode, user, onL
     ]
   }
 
-  const tabs = getTabs()
+  // Esconde del menú lo que el rol actual no puede abrir (ver
+  // businessRoles.js) — la barrera real es firestore.rules, esto es sólo
+  // para no ofrecer un botón que el servidor va a rechazar.
+  const tabs = getTabs().filter(tab => puedeVerPantalla(myRole, tab.id))
   const userInitial = user?.email?.charAt(0).toUpperCase() || '?'
   const userEmail = user?.email || ''
 

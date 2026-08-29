@@ -30,11 +30,16 @@ rules_version = '2';
 //  MODELO DE DATOS QUE ASUMEN
 //  ──────────────────────────
 //    users/{uid}                                      → { email, businessId, isOwner }
-//    businesses/{businessId}                          → { createdBy, createdAt, members: [uid], roles? }
+//    businesses/{businessId}                          → { createdBy, createdAt, members: [uid], roles?, memberEmails? }
 //
 //  ROLES (opcional, y por eso esto se puede desplegar sin migrar nada)
 //  ──────────────────────────────────────────────────────────────────
 //    roles: { "<uid>": "dueno" | "profesional" | "asistente" }
+//
+//  memberEmails: { "<uid>": "email real de esa sesión" } — sólo para que la
+//  pantalla de Miembros muestre algo legible en vez de un uid. Cada miembro
+//  escribe SÓLO su propia entrada, y tiene que coincidir con su email real
+//  (ver la regla más abajo) — no es un canal para escribir texto arbitrario.
 //
 //      dueno        todo, incluidas finanzas y auditoría
 //      profesional  agenda + historias clínicas; NO ve gastos ni auditoría
@@ -141,9 +146,13 @@ service cloud.firestore {
             || request.resource.data.roles[request.auth.uid] == 'dueno');
 
       // Un miembro puede editar los datos del negocio, pero NO la lista de
-      // miembros ni quién lo creó por esta vía.
+      // miembros ni quién lo creó por esta vía. memberEmails también queda
+      // afuera: tiene su propia regla más abajo, que exige que cada quien
+      // escriba SÓLO su propia entrada — si se dejara pasar por acá, esa
+      // restricción no serviría de nada (cualquier miembro podría pisar la
+      // entrada de otro con lo que quisiera).
       allow update: if isMemberOf(businessId)
-        && !changedKeys().hasAny(['members', 'createdBy'])
+        && !changedKeys().hasAny(['members', 'createdBy', 'memberEmails'])
         // Los roles los reparte el dueño y nadie más. Sin esto, la asistente
         // se asciende sola editando el documento del negocio.
         && (!changedKeys().hasAny(['roles']) || rolEn(businessId) == 'dueno');
@@ -170,6 +179,30 @@ service cloud.firestore {
             && !(request.auth.uid in request.resource.data.members)
           )
         );
+
+      // Expulsar a OTRO miembro: sólo el dueño, y nunca a sí mismo (para eso
+      // está "salirse" arriba). Sin esto, la única forma de cortarle el
+      // acceso a alguien con quien se compartió el código por error era que
+      // el dueño abandonara su propio negocio — arrastrando también a todos
+      // los demás miembros legítimos.
+      allow update: if isSignedIn()
+        && changedKeys().hasOnly(['members'])
+        && isMemberOf(businessId)
+        && rolEn(businessId) == 'dueno'
+        && request.auth.uid in request.resource.data.members
+        && resource.data.members.hasAll(request.resource.data.members)
+        && request.resource.data.members.size() == resource.data.members.size() - 1;
+
+      // Etiqueta de email para mostrar "quién es quién" en la pantalla de
+      // Miembros — no es un dato nuevo sensible (los miembros ya ven
+      // historias clínicas y pedidos entre sí), sólo hace falta que nadie
+      // pueda escribir la entrada de OTRO ni mentir sobre la propia: tiene
+      // que coincidir con el email real de la sesión autenticada.
+      allow update: if isSignedIn()
+        && isMemberOf(businessId)
+        && changedKeys().hasOnly(['memberEmails'])
+        && request.resource.data.memberEmails.diff(resource.data.get('memberEmails', {})).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.memberEmails[request.auth.uid] == request.auth.token.email;
 
       allow delete: if false;
 

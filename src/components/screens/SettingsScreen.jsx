@@ -11,7 +11,8 @@ import {
   exportPatientsToExcel, exportProductsToExcel, exportAppointmentsToExcel,
   downloadPatientTemplate, downloadProductTemplate
 } from '../../utils/exportImport'
-import { leaveBusiness, joinBusiness } from '../../hooks/useBusinessId'
+import { leaveBusiness, joinBusiness, removeMember, setMemberRole } from '../../hooks/useBusinessId'
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, rolDe } from '../../utils/businessRoles'
 
 // ─── CONSTANTES (fuera del componente) ───────────────────────────────────────
 
@@ -130,7 +131,7 @@ export function SettingsScreen({
   consultationConfig, setConsultationConfig,
   patients, products, appointments,
   licenseStatus, onDeactivateLicense, onActivateLicense, user,
-  businessId, onBusinessChange,
+  businessId, onBusinessChange, businessDoc, myRole,
   cargarDatosDeEjemplo, borrarDatosDeEjemplo, cuantosEjemplos = 0,
   appVersion,
 }) {
@@ -154,6 +155,7 @@ export function SettingsScreen({
   const [leavingBusiness, setLeavingBusiness] = useState(false)
   const [joiningCode, setJoiningCode] = useState('')
   const [joinError, setJoinError] = useState('')
+  const [memberActionUid, setMemberActionUid] = useState(null) // uid con una acción en curso (expulsar/cambiar rol)
 
   const activationInProgress = useRef(false)
 
@@ -364,6 +366,41 @@ export function SettingsScreen({
       toast.addToast('❌ Error al salir del negocio', 'error')
     } finally {
       setLeavingBusiness(false)
+    }
+  }
+
+  // ── Miembros: expulsar y cambiar rol (sólo el dueño ve estos controles;
+  // firestore.rules es la barrera real, esto sólo evita ofrecer un botón que
+  // el servidor va a rechazar) ─────────────────────────────────────────────
+  const handleRemoveMember = async (uid, etiqueta) => {
+    const ok = await confirm(
+      `¿Expulsar a ${etiqueta} de este negocio?\n\nPierde el acceso de inmediato. Puede volver a unirse si todavía tiene el código.`,
+      'Expulsar miembro'
+    )
+    if (!ok) return
+
+    setMemberActionUid(uid)
+    try {
+      await removeMember(businessId, uid)
+      toast.addToast(`✅ ${etiqueta} ya no tiene acceso`, 'success')
+    } catch (err) {
+      console.error('[Settings] Error al expulsar:', err)
+      toast.addToast('❌ No se pudo expulsar', 'error')
+    } finally {
+      setMemberActionUid(null)
+    }
+  }
+
+  const handleChangeRole = async (uid, nuevoRol) => {
+    setMemberActionUid(uid)
+    try {
+      await setMemberRole(businessId, uid, nuevoRol)
+      toast.addToast(`✅ Rol actualizado a ${ROLE_LABELS[nuevoRol]}`, 'success')
+    } catch (err) {
+      console.error('[Settings] Error al cambiar rol:', err)
+      toast.addToast('❌ No se pudo cambiar el rol', 'error')
+    } finally {
+      setMemberActionUid(null)
     }
   }
 
@@ -606,6 +643,95 @@ export function SettingsScreen({
                         }}>
                           {copied ? '✅ Copiado!' : '📋 Copiar para compartir'}
                         </button>
+                      </div>
+
+                      {/* Miembros: quién está adentro, y qué puede ver cada uno */}
+                      <div style={{
+                        background: 'var(--bg-secondary)', borderRadius: '12px',
+                        padding: '16px', border: '1px solid var(--border)'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>
+                          👥 Miembros ({businessDoc?.members?.length || 0})
+                        </div>
+
+                        {myRole !== ROLES.DUENO && (
+                          <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: '0 0 10px' }}>
+                            Tu rol acá es {ROLE_LABELS[myRole]}. Sólo el dueño puede
+                            expulsar miembros o cambiar roles.
+                          </p>
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {(businessDoc?.members || []).map(uid => {
+                            const esYo = uid === user?.uid
+                            const rolDeEste = rolDe(businessDoc, uid)
+                            const etiqueta = businessDoc?.memberEmails?.[uid]
+                              || (esYo ? (user?.email || uid) : `Miembro ${uid.slice(0, 6)}…`)
+                            const enCurso = memberActionUid === uid
+
+                            return (
+                              <div key={uid} style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 10px', borderRadius: '10px',
+                                background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                              }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{
+                                    fontSize: '13px', fontWeight: 600,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }}>
+                                    {etiqueta}{esYo && ' (vos)'}
+                                  </div>
+                                  {myRole !== ROLES.DUENO && (
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                      {ROLE_LABELS[rolDeEste]}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {myRole === ROLES.DUENO && !esYo ? (
+                                  <>
+                                    <select
+                                      value={rolDeEste}
+                                      disabled={enCurso}
+                                      onChange={e => handleChangeRole(uid, e.target.value)}
+                                      title={ROLE_DESCRIPTIONS[rolDeEste]}
+                                      style={{
+                                        fontSize: '12px', padding: '5px 8px', borderRadius: '8px',
+                                        border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+                                        color: 'var(--text-primary)',
+                                      }}
+                                    >
+                                      {Object.values(ROLES).map(r => (
+                                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      onClick={() => handleRemoveMember(uid, etiqueta)}
+                                      disabled={enCurso}
+                                      title="Expulsar de este negocio"
+                                      style={{
+                                        padding: '5px 10px', borderRadius: '8px',
+                                        border: '1px solid var(--accent-red)', background: 'transparent',
+                                        color: 'var(--accent-red)', fontSize: '12px', fontWeight: 600,
+                                        cursor: enCurso ? 'default' : 'pointer', opacity: enCurso ? 0.5 : 1,
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      🚫 Expulsar
+                                    </button>
+                                  </>
+                                ) : (
+                                  myRole === ROLES.DUENO && (
+                                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                      {ROLE_LABELS[rolDeEste]}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
 
                       {/* Unirse a otro negocio */}

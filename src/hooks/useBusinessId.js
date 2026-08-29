@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { firestore } from '../firebase'
+import { rolDe, ROLES } from '../utils/businessRoles'
 
 /**
  * useBusinessId — resuelve a qué negocio pertenece el usuario logueado.
@@ -231,4 +232,78 @@ export async function leaveBusiness(user, currentBusinessId) {
   }, { merge: true })
 
   return newBusinessId
+}
+
+/**
+ * useBusinessMembers — suscripción en vivo a members/roles/memberEmails del
+ * negocio actual, más el rol propio ya calculado (mismo default que
+ * firestore.rules: sin `roles`, todos son dueños — ver rolDe en
+ * utils/businessRoles.js).
+ *
+ * Separado de useBusinessId a propósito: ese hook resuelve UNA vez a qué
+ * negocio pertenece el usuario (y lo crea si hace falta); esto es la
+ * membresía de ESE negocio ya resuelto, que cambia en vivo — si el dueño te
+ * agrega a otro miembro, o te cambia el rol, o te expulsa, tiene que
+ * reflejarse sin recargar la app.
+ */
+export function useBusinessMembers(businessId, uid) {
+  const [businessDoc, setBusinessDoc] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!businessId) {
+      setBusinessDoc(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    const unsub = onSnapshot(
+      doc(firestore, 'businesses', businessId),
+      (snap) => {
+        setBusinessDoc(snap.exists() ? snap.data() : null)
+        setLoading(false)
+      },
+      (err) => {
+        console.warn('[useBusinessMembers] Error suscribiéndose:', err.code || err.message)
+        setLoading(false)
+      }
+    )
+    return unsub
+  }, [businessId])
+
+  const myRole = uid ? rolDe(businessDoc, uid) : ROLES.DUENO
+
+  return { businessDoc, myRole, loading }
+}
+
+/** Guarda (o corrige) el email propio en memberEmails, para que Miembros
+ * muestre algo legible en vez de un uid. Falla en silencio: es sólo
+ * cosmético, no debe interrumpir el uso de la app si no se pudo escribir. */
+export async function writeMyMemberEmail(user, businessId) {
+  if (!user?.email || !businessId) return
+  try {
+    await updateDoc(doc(firestore, 'businesses', businessId), {
+      [`memberEmails.${user.uid}`]: user.email,
+    })
+  } catch (err) {
+    console.warn('[writeMyMemberEmail] No se pudo guardar:', err.code || err.message)
+  }
+}
+
+/** Sólo el dueño puede expulsar a otro miembro (nunca a sí mismo — para eso
+ * está leaveBusiness). La regla de Firestore es la que realmente lo exige;
+ * esto solo hace la llamada. */
+export async function removeMember(businessId, targetUid) {
+  if (!businessId || !targetUid) throw new Error('Faltan datos')
+  await updateDoc(doc(firestore, 'businesses', businessId), {
+    members: arrayRemove(targetUid),
+  })
+}
+
+/** Sólo el dueño puede repartir roles (lo exige la regla de Firestore). */
+export async function setMemberRole(businessId, targetUid, role) {
+  if (!businessId || !targetUid || !role) throw new Error('Faltan datos')
+  await updateDoc(doc(firestore, 'businesses', businessId), {
+    [`roles.${targetUid}`]: role,
+  })
 }

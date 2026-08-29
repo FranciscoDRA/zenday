@@ -4,7 +4,7 @@ import './Splash.css'
 
 // NOTA: migrateLocalStorageToFirestore y firestore imports eliminados por no usarse
 import { useFirestoreSync } from './hooks/useFirestoreSync'
-import { useBusinessId } from './hooks/useBusinessId'
+import { useBusinessId, useBusinessMembers, writeMyMemberEmail } from './hooks/useBusinessId'
 
 // Contexts
 import { ToastProvider, useToast } from './contexts/ToastContext'
@@ -23,7 +23,9 @@ import { hasConflict, hasAnyConflict, playDone, formatCurrency, normalizeEntitie
 import { generarEjemplos, sinEjemplos, contarEjemplos } from './utils/datosDeEjemplo'
 import { MEDIO_POR_DEFECTO, CLAVE_ULTIMO_MEDIO } from './utils/mediosDePago'
 import { CargandoPantalla } from './components/common/CargandoPantalla'
+import { AccesoRestringido } from './components/common/AccesoRestringido'
 import { AvisoDeError } from './components/common/AvisoDeError'
+import { puedeVerPantalla } from './utils/businessRoles'
 import { copiarAlPortapapeles } from './utils/helpers'
 import { armarAlertas } from './utils/alertas'
 import { addAuditLog } from './utils/audit'
@@ -341,6 +343,19 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
     saveDoc: saveDocRaw, saveMany, deleteDoc: deleteFireDocRaw, subscribe, getAll,
   } = useFirestoreSync(businessId, userMode)
   const [migrationDone, setMigrationDone] = useState(false)
+
+  // ── Miembros y rol propio dentro del negocio ────────────────────────────
+  // myRole gobierna qué pantallas se ven (ver utils/businessRoles.js) y qué
+  // puede hacer cada quien en "Miembros" (Configuración → Mi negocio).
+  const { businessDoc, myRole } = useBusinessMembers(businessId, user?.uid)
+
+  // Se autoreporta el propio email UNA vez por sesión/negocio, para que la
+  // pantalla de Miembros pueda mostrar algo legible en vez de un uid. Falla
+  // en silencio (ver writeMyMemberEmail): es cosmético, no debe interrumpir
+  // el arranque de la app si Firestore no responde.
+  useEffect(() => {
+    if (businessId && user) writeMyMemberEmail(user, businessId)
+  }, [businessId, user])
 
   // saveDoc/deleteDoc de useFirestoreSync devuelven { ok, error } en vez de tirar
   // excepción — pero en este archivo se llaman "al pasar" (sin await, para no
@@ -839,6 +854,54 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
   }, [loaded, products, appointments, addNotification])
 
   // ========== ACCIONES ==========
+
+  // Ajusta el stock de un producto cuando el pedido que lo referencia ENTRA o
+  // SALE de un estado "completado" (completed/delivered/picked) — sin
+  // importar si ese cambio de estado llega por crear el pedido ya completado
+  // (venta al mostrador en modo emprendedor: se carga directo como
+  // "Entregado"), por editarlo desde el formulario completo, o por el botón
+  // dedicado de cambiar estado. Antes esta lógica vivía sólo adentro de
+  // updateStatus, así que las otras dos formas de completar un pedido nunca
+  // descontaban stock: el número en "Artículos" quedaba inflado para siempre
+  // respecto a lo realmente vendido.
+  const adjustStockForStatus = useCallback((oldStatus, newStatus, productId, quantity, patientName) => {
+    if (!productId) return
+    const wasCompleted = COMPLETED_STATUSES.has(oldStatus)
+    const isNowCompleted = COMPLETED_STATUSES.has(newStatus)
+    if (wasCompleted === isNowCompleted) return
+
+    setProducts(prev => {
+      const product = prev.find(p => normalizeId(p.id) === normalizeId(productId))
+      if (!product) return prev
+      const cantidad = Number(quantity) || 1
+
+      if (isNowCompleted) {
+        const currentStock = product.stock || 0
+        if (currentStock <= 0) {
+          toast.addToast(`⚠️ "${product.name}" sin stock`, 'warning')
+          addNotification('error', '❌ Sin stock', `No se puede completar: ${product.name} agotado`, { screen: 'products' })
+          return prev
+        }
+        const newStock = Math.max(0, currentStock - cantidad)
+        const updatedProduct = { ...product, stock: newStock }
+        if (newStock === 0)    addNotification('error',   `⚠️ "${product.name}" agotado`, `Stock: 0 unidades`, { screen: 'products' })
+        else if (newStock < 5) addNotification('warning', `📦 Stock bajo: ${product.name}`, `Quedan ${newStock} unidades`, { screen: 'products' })
+        addNotification('success', '✅ Pedido completado', patientName ? `${product.name} entregado a ${patientName}` : `${product.name} entregado`, { screen: 'agenda' })
+
+        if (businessId && migrationDone) saveDoc('products', product.id, updatedProduct)
+        return prev.map(p => normalizeId(p.id) === normalizeId(productId) ? updatedProduct : p)
+      }
+
+      // Se revierte: devolver la misma cantidad que se había descontado.
+      const newStock = (product.stock || 0) + cantidad
+      const updatedProduct = { ...product, stock: newStock }
+      addNotification('info', '🔄 Pedido revertido', `Stock de ${product.name} restaurado a ${newStock}`, { screen: 'products' })
+
+      if (businessId && migrationDone) saveDoc('products', product.id, updatedProduct)
+      return prev.map(p => normalizeId(p.id) === normalizeId(productId) ? updatedProduct : p)
+    })
+  }, [setProducts, toast, addNotification, businessId, migrationDone, saveDoc])
+
   const addAppointment = useCallback((data) => {
     const safeAppointments = Array.isArray(appointments) ? appointments : []
     if (hasConflict(safeAppointments, data)) {
@@ -848,29 +911,31 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
     const n = { id: newId(), ...data, createdAt: new Date().toISOString() }
     dispatch({ type: 'ADD_APPOINTMENT', payload: n })
     setHistoryState([...safeAppointments, n])
-    
+
     if (businessId && migrationDone) saveDoc('appointments', n.id, n)
-    
+
+    adjustStockForStatus(null, n.status, n.productId, n.quantity, n.patientName)
     playDone()
     addAuditLog('CREAR', 'Pedido', n.id, { patient: data.patientName })
     addNotification('success', '✅ Cita creada', `Cita con ${data.patientName} agendada correctamente`, { screen: 'agenda' })
     return true
-  }, [appointments, setHistoryState, addNotification, businessId, migrationDone, saveDoc])
+  }, [appointments, setHistoryState, addNotification, businessId, migrationDone, saveDoc, adjustStockForStatus])
 
   const addMultipleAppointments = useCallback((data) => {
     const safeAppointments = Array.isArray(appointments) ? appointments : []
     if (hasAnyConflict(safeAppointments, data)) return false
     dispatch({ type: 'ADD_MULTIPLE_APPOINTMENTS', payload: data })
     setHistoryState([...safeAppointments, ...data])
-    
+
     if (businessId && migrationDone) {
       data.forEach(n => saveDoc('appointments', n.id, n))
     }
-    
+
+    data.forEach(n => adjustStockForStatus(null, n.status, n.productId, n.quantity, n.patientName))
     playDone()
     addNotification('success', '✅ Citas múltiples', `${data.length} citas agregadas correctamente`, { screen: 'agenda' })
     return true
-  }, [appointments, setHistoryState, addNotification, businessId, migrationDone, saveDoc])
+  }, [appointments, setHistoryState, addNotification, businessId, migrationDone, saveDoc, adjustStockForStatus])
 
   const updateAppointment = useCallback((id, upd) => {
     const safeAppointments = Array.isArray(appointments) ? appointments : []
@@ -898,11 +963,18 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
 
     if (businessId && migrationDone) saveDoc('appointments', id, updatedAppointment)
 
+    // Editar desde el formulario completo también puede cambiar el estado
+    // (no sólo el botón dedicado de "cambiar estado"), así que también tiene
+    // que ajustar stock si ese cambio cruza hacia/desde completado.
+    if (updatedAppointment.status !== appointment.status) {
+      adjustStockForStatus(appointment.status, updatedAppointment.status, updatedAppointment.productId, updatedAppointment.quantity, updatedAppointment.patientName)
+    }
+
     addAuditLog('REPROGRAMAR', 'Pedido', id, { changes: upd })
     toast.addToast('✅ Cita reprogramada', 'success')
     addNotification('info', '🔄 Cita reprogramada', `La cita ha sido modificada`, { screen: 'agenda' })
     return true
-  }, [appointments, setHistoryState, toast, addNotification, businessId, migrationDone, saveDoc])
+  }, [appointments, setHistoryState, toast, addNotification, businessId, migrationDone, saveDoc, adjustStockForStatus])
 
   const updateStatus = useCallback((id, newStatus) => {
     const safeAppointments = Array.isArray(appointments) ? appointments : []
@@ -919,53 +991,10 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
     if (businessId && migrationDone) saveDoc('appointments', id, updatedAppointment)
     
     addAuditLog('CAMBIAR_ESTADO', 'Pedido', id, { oldStatus, newStatus })
-    
-    const completingStatuses = ['completed', 'delivered', 'picked']
-    const wasCompleted  = completingStatuses.includes(oldStatus)
-    const isNowCompleted = completingStatuses.includes(newStatus)
-    
-    if (!wasCompleted && isNowCompleted && appointment.productId) {
-      setProducts(prev => {
-        const product = prev.find(p => normalizeId(p.id) === normalizeId(appointment.productId))
-        if (!product) return prev
-        const currentStock = product.stock || 0
-        if (currentStock <= 0) {
-          toast.addToast(`⚠️ "${product.name}" sin stock`, 'warning')
-          addNotification('error', '❌ Sin stock', `No se puede completar: ${product.name} agotado`, { screen: 'products' })
-          return prev
-        }
-        // FIX: descontaba 1 fijo aunque el pedido fuera de 5 unidades.
-        // `quantity` ya venía guardada en el pedido y hasta se validaba en
-        // checkProductStock — sólo faltaba usarla acá.
-        const cantidad = Number(appointment.quantity) || 1
-        const newStock = Math.max(0, currentStock - cantidad)
-        const updatedProduct = { ...product, stock: newStock }
-        if (newStock === 0)    addNotification('error',   `⚠️ "${product.name}" agotado`, `Stock: 0 unidades`, { screen: 'products' })
-        else if (newStock < 5) addNotification('warning', `📦 Stock bajo: ${product.name}`, `Quedan ${newStock} unidades`, { screen: 'products' })
-        addNotification('success', '✅ Pedido completado', `${product.name} entregado a ${appointment.patientName}`, { screen: 'agenda' })
-        
-        if (businessId && migrationDone) saveDoc('products', product.id, updatedProduct)
-        
-        return prev.map(p => normalizeId(p.id) === normalizeId(appointment.productId) ? updatedProduct : p)
-      })
-    }
-    if (wasCompleted && !isNowCompleted && appointment.productId) {
-      setProducts(prev => {
-        const product = prev.find(p => normalizeId(p.id) === normalizeId(appointment.productId))
-        if (!product) return prev
-        // Al revertir hay que devolver la misma cantidad que se descontó.
-        const cantidad = Number(appointment.quantity) || 1
-        const newStock = (product.stock || 0) + cantidad
-        const updatedProduct = { ...product, stock: newStock }
-        addNotification('info', '🔄 Pedido revertido', `Stock de ${product.name} restaurado a ${newStock}`, { screen: 'products' })
-        
-        if (businessId && migrationDone) saveDoc('products', product.id, updatedProduct)
-        
-        return prev.map(p => normalizeId(p.id) === normalizeId(appointment.productId) ? updatedProduct : p)
-      })
-    }
+
+    adjustStockForStatus(oldStatus, newStatus, appointment.productId, appointment.quantity, appointment.patientName)
     return true
-  }, [appointments, setHistoryState, setProducts, toast, addNotification, businessId, migrationDone, saveDoc])
+  }, [appointments, setHistoryState, toast, businessId, migrationDone, saveDoc, adjustStockForStatus])
 
   const deleteAppointment = useCallback(async (id) => {
     const safeAppointments = Array.isArray(appointments) ? appointments : []
@@ -1502,6 +1531,8 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
     onLogout,
     businessId,
     onBusinessChange,
+    businessDoc,
+    myRole,
     toast,
   }
 
@@ -1678,6 +1709,7 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
           user={user}
           onLogout={onLogout}
           alertas={cantidadDeAlertas}
+          myRole={myRole}
         />
 
         <main className="main-content">
@@ -1718,7 +1750,9 @@ function AppContent({ user, onLogout, businessId: propBusinessId, onBusinessChan
                         la carga inicial y al cambio de modo, que es cuando
                         `loaded` se apaga; navegar entre pantallas no lo dispara. */}
                     {loaded
-                      ? <S {...sharedProps} params={nav.params[id] || {}} />
+                      ? (puedeVerPantalla(myRole, id)
+                          ? <S {...sharedProps} params={nav.params[id] || {}} />
+                          : <AccesoRestringido rol={myRole} />)
                       : <CargandoPantalla />}
                   </ErrorBoundary>
                 </div>

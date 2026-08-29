@@ -42,7 +42,11 @@ describe('la bandera de carga por fin se usa', () => {
   const limpio = sinComentarios(app)
 
   it('`loaded` decide qué se dibuja', () => {
-    expect(limpio).toMatch(/\{loaded\s*\n?\s*\?\s*<S \{\.\.\.sharedProps\}/)
+    // Adentro del `? ...` de loaded hay un segundo ternario (puedeVerPantalla,
+    // que decide si esa pantalla es la real o el aviso de acceso restringido
+    // según el rol) — pero loaded sigue siendo el que separa "hay algo para
+    // mostrar" de CargandoPantalla, que es lo que este test verifica.
+    expect(limpio).toMatch(/\{loaded\s*\n?\s*\?\s*\(puedeVerPantalla\(myRole, id\)\s*\n?\s*\?\s*<S \{\.\.\.sharedProps\}/)
     expect(limpio).toMatch(/:\s*<CargandoPantalla \/>\}/)
   })
 

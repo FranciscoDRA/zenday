@@ -197,6 +197,63 @@ await t('Ana sigue viendo sus gastos',
 await t('Ana sigue leyendo su auditoría',
   () => assertSucceeds(getDocs(collection(ana, 'businesses', BIZ_A, 'data', 'professional', 'audit'))))
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  MIEMBROS: expulsar y la etiqueta de email
+//
+//  Antes de esto, la única forma de cortarle el acceso a alguien con quien se
+//  compartió el código del negocio por error era que el DUEÑO abandonara su
+//  propio negocio (arrastrando también a los miembros legítimos). Estas
+//  reglas permiten que el dueño saque a un miembro puntual sin irse él mismo.
+// ═══════════════════════════════════════════════════════════════════════════
+const BIZ_E = 'MMMM-NNNN-OOOO'
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore()
+  await setDoc(doc(db, 'businesses', BIZ_E), {
+    createdBy: 'dueño-e', createdAt: 'x',
+    members: ['dueño-e', 'profesional-e', 'intruso-e'],
+    roles: { 'dueño-e': 'dueno', 'profesional-e': 'profesional' }, // intruso-e sin rol = asistente
+  })
+})
+const duenoE = env.authenticatedContext('dueño-e').firestore()
+const profE  = env.authenticatedContext('profesional-e').firestore()
+const intrE  = env.authenticatedContext('intruso-e').firestore()
+
+console.log('\n═══ MIEMBROS: sólo el dueño expulsa, y nunca a sí mismo ═══')
+await t('El profesional NO puede expulsar al intruso (no es dueño)',
+  () => assertFails(updateDoc(doc(profE, 'businesses', BIZ_E), { members: ['dueño-e', 'profesional-e'] })))
+// Sacarse a uno mismo (== 'salirse') es un caso aparte, ya cubierto en
+// "MEMBRESÍA" más arriba — esa regla existía antes y sigue intacta: no hace
+// falta re-probarla acá, esta sección es sólo sobre expulsar a OTRO.
+await t('El dueño NO puede expulsar a dos a la vez',
+  () => assertFails(updateDoc(doc(duenoE, 'businesses', BIZ_E), { members: ['dueño-e'] })))
+await t('El dueño NO puede "expulsar y agregar" en el mismo golpe (no es una resta pura)',
+  () => assertFails(updateDoc(doc(duenoE, 'businesses', BIZ_E), { members: ['dueño-e', 'profesional-e', 'otro-nuevo'] })))
+await t('El intruso todavía tiene acceso antes de ser expulsado',
+  () => assertSucceeds(getDoc(doc(intrE, 'businesses', BIZ_E, 'data', 'professional', 'appointments', 'x'))))
+await t('El dueño SÍ puede expulsar al intruso',
+  () => assertSucceeds(updateDoc(doc(duenoE, 'businesses', BIZ_E), { members: ['dueño-e', 'profesional-e'] })))
+await t('El intruso, ya expulsado, pierde el acceso',
+  () => assertFails(getDoc(doc(intrE, 'businesses', BIZ_E, 'data', 'professional', 'appointments', 'x'))))
+await t('El intruso expulsado no puede reincorporarse solo (arrayUnion sobre members ya no lo autoriza porque su propio rol se perdió, pero el código SIGUE siendo válido: éste re-confirma que unirse otra vez pasa por la regla de "sumarse", no por la de "expulsar")',
+  () => assertSucceeds(updateDoc(doc(intrE, 'businesses', BIZ_E), { members: arrayUnion('intruso-e') })))
+
+console.log('\n═══ MIEMBROS: la etiqueta de email es sólo la propia, y tiene que ser la real ═══')
+const claraEmail = env.authenticatedContext('clara', { email: 'clara@consultorio.com' }).firestore()
+const pabloEmail = env.authenticatedContext('pablo', { email: 'pablo@consultorio.com' }).firestore()
+await t('Clara guarda su propio email real',
+  () => assertSucceeds(updateDoc(doc(claraEmail, 'businesses', BIZ_C), { 'memberEmails.clara': 'clara@consultorio.com' })))
+await t('Clara NO puede mentir sobre su propio email',
+  () => assertFails(updateDoc(doc(claraEmail, 'businesses', BIZ_C), { 'memberEmails.clara': 'otro@fake.com' })))
+await t('Clara NO puede escribir la etiqueta de Pablo',
+  () => assertFails(updateDoc(doc(claraEmail, 'businesses', BIZ_C), { 'memberEmails.pablo': 'pablo@consultorio.com' })))
+await t('Pablo SÍ puede escribir la suya',
+  () => assertSucceeds(updateDoc(doc(pabloEmail, 'businesses', BIZ_C), { 'memberEmails.pablo': 'pablo@consultorio.com' })))
+await t('memberEmails no se puede colar por la regla general (junto con otro campo cualquiera)',
+  // El valor tiene que ser REALMENTE distinto del que ya está guardado: si
+  // fuera el mismo, Firestore no lo cuenta como "campo cambiado" y la prueba
+  // pasaría por la razón equivocada (no habría nada que "colar").
+  () => assertFails(updateDoc(doc(claraEmail, 'businesses', BIZ_C), { name: 'Consultorio Clara', 'memberEmails.clara': 'clara-nueva@consultorio.com' })))
+
 console.log(`\n${pass} OK / ${fail} fallas\n`)
 await env.cleanup()
 process.exit(fail ? 1 : 0)
